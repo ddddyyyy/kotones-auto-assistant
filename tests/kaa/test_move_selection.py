@@ -99,8 +99,8 @@ def test_move_order_falls_back_when_no_strategy_state_is_available():
 
 def test_move_scroll_thumb_is_detected_without_confusing_the_track():
     screen = np.full((1280, 720, 3), 240, dtype=np.uint8)
-    screen[510:1095, 683] = (146, 143, 134)
-    screen[1000:1090, 683] = (129, 128, 132)
+    screen[510:1095, 683] = (129, 128, 132)
+    screen[1000:1090, 683] = (146, 143, 134)
 
     assert find_move_scroll_thumb(screen) == 1045
     assert find_move_scroll_thumb(np.full_like(screen, 240)) is None

@@ -96,7 +96,10 @@ def evaluate_exam_trigger(trigger: ExamTrigger | None, state: BattleState) -> Tr
 
 
 def evaluate_trigger_id(trigger_id: str, state: BattleState) -> TriggerVerdict:
-    return evaluate_exam_trigger(load_exam_trigger(trigger_id), state)
+    trigger = load_exam_trigger(trigger_id)
+    if trigger_id and trigger is None:
+        return TriggerVerdict.UNKNOWN
+    return evaluate_exam_trigger(trigger, state)
 
 
 def _evaluate_field_status(
@@ -146,9 +149,17 @@ def _evaluate_field_status(
         'ProduceExamFieldStatusType_FullPowerPointUp': 'full_power_point',
     }
     if status_type in values:
+        observed_name = observed_names.get(status_type)
+        if observed_name == 'genki':
+            return state.genki >= threshold if state.genki_known else None
+        observed = dict(state.observed_effect_values).get(observed_name or '')
+        if observed is not None:
+            # A reconciled numeric observation resolves both sides of a
+            # threshold, including zero. A conflicting raw reading proves
+            # neither side until reconciliation accepts it.
+            return observed >= threshold if observed == values[status_type] else None
         if values[status_type] >= threshold:
             return True
-        observed_name = observed_names.get(status_type)
         if observed_name == 'full_power_point' and observed_name in state.observed_effects:
             # Point observations are emitted only with a readable number,
             # including zero; the icon alone does not prove a positive value.

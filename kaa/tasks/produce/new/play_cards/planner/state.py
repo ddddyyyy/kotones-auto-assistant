@@ -71,7 +71,7 @@ class ProduceItemState:
 
 @dataclass(frozen=True)
 class BattleState:
-    """一次决策所需的完整、可扩展战斗快照。"""
+    """决策快照，含观察、推断和预留字段；并非完整游戏真值。"""
 
     remaining_turns: int
     hp: int
@@ -93,7 +93,7 @@ class BattleState:
     """Visible hand count, including cards whose identity could not be read."""
     draw_pile_card_ids: tuple[str, ...] = ()
     draw_pile_empty: bool | None = None
-    """None means the unseen draw pile has not been checked, not that it is empty."""
+    """Reserved input: production never observes emptiness; None stays unknown."""
     discard_card_ids: tuple[str, ...] = ()
     removed_card_ids: tuple[str, ...] = ()
     observed_effects: frozenset[str] = frozenset()
@@ -101,9 +101,15 @@ class BattleState:
     confirmed_absent_effects: frozenset[str] = frozenset()
     """Effects whose calibrated HUD icons were absent on repeated observations."""
     items: tuple[ProduceItemState, ...] = ()
+    """Reserved only: production does not populate or simulate P-item triggers."""
     anomaly: AnomalyState = field(default_factory=AnomalyState)
     buffs: ExamBuffState = field(default_factory=ExamBuffState)
     observation_confidence: float = 1.0
+    """Legacy reserved scalar, not measured or used by production decisions.
+
+    Its default must not be interpreted as 100% confidence; use field-level
+    known flags, raw observations and CardEvaluation confidence instead.
+    """
     hp_known: bool = True
     genki_known: bool = True
     observed_remaining_turns: int | None = None

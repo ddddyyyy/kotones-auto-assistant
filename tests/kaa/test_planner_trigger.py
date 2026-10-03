@@ -1,3 +1,7 @@
+from dataclasses import replace
+
+import pytest
+
 from kaa.tasks.produce.new.play_cards.planner.state import (
     AnomalyState,
     AnomalyStance,
@@ -215,3 +219,43 @@ def test_database_update_invalidates_existing_and_missing_triggers(monkeypatch):
         assert calls == ['changed', 'missing', 'changed', 'missing']
     finally:
         trigger.load_exam_trigger.cache_clear()
+
+
+@pytest.mark.parametrize('value, threshold', [(0, 1), (2, 3), (3, 3), (4, 3)])
+@pytest.mark.parametrize('negated', [False, True])
+def test_reconciled_numeric_hud_resolves_threshold_both_ways(value, threshold, negated):
+    state = BattleState(
+        remaining_turns=4, hp=20, genki=0,
+        buffs=ExamBuffState(lesson_buff=value),
+        observed_effects=frozenset({'lesson_buff'}),
+        observed_effect_values=(('lesson_buff', value),),
+    )
+    expected = (value >= threshold) != negated
+    trigger = _trigger('ProduceExamFieldStatusType_LessonBuffUp', threshold, negated=negated)
+    assert evaluate_exam_trigger(trigger, state) == (
+        TriggerVerdict.ACTIVE if expected else TriggerVerdict.INACTIVE
+    )
+    conflict = replace(state, observed_effect_values=(('lesson_buff', value + 1),))
+    assert evaluate_exam_trigger(trigger, conflict) == TriggerVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize('genki, known, expected', [
+    (0, True, TriggerVerdict.INACTIVE),
+    (2, True, TriggerVerdict.INACTIVE),
+    (3, True, TriggerVerdict.ACTIVE),
+    (10, False, TriggerVerdict.UNKNOWN),
+])
+def test_block_threshold_respects_numeric_resource_knowledge(genki, known, expected):
+    state = BattleState(remaining_turns=4, hp=20, genki=genki, genki_known=known)
+    assert evaluate_exam_trigger(
+        _trigger('ProduceExamFieldStatusType_BlockUp', 3), state,
+    ) == expected
+
+
+def test_missing_named_trigger_is_not_an_unconditional_effect(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+
+    monkeypatch.setattr(trigger, 'load_exam_trigger', lambda key: None)
+    state = BattleState(remaining_turns=4, hp=20, genki=0)
+    assert trigger.evaluate_trigger_id('', state) == TriggerVerdict.ACTIVE
+    assert trigger.evaluate_trigger_id('missing-condition', state) == TriggerVerdict.UNKNOWN

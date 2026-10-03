@@ -40,24 +40,46 @@ def _has_upgrade_marker(screen: MatLike, letter: Rect) -> bool:
     return int(red.sum()) >= 80
 
 
-def find_move_scroll_thumb(screen: MatLike) -> int | None:
-    """Locate the dark thumb on the move dialog's narrow right-hand track."""
+@dataclass(frozen=True)
+class MoveScrollbar:
+    """Measured thumb geometry; normalized positions use its actual travel."""
+
+    center_y: int
+    minimum_y: int
+    maximum_y: int
+
+    @property
+    def position(self) -> float:
+        return max(0.0, min(1.0, (self.center_y - self.minimum_y) / (self.maximum_y - self.minimum_y)))
+
+    def target_y(self, position: float) -> int:
+        return self.minimum_y + round(max(0.0, min(1.0, position)) * (self.maximum_y - self.minimum_y))
+
+
+def observe_move_scrollbar(screen: MatLike) -> MoveScrollbar | None:
+    """Require both the light thumb and dark track, rejecting scene pixels."""
     height, width = screen.shape[:2]
     track = R.InProduce.BoxMoveScrollTrack
     if height < track.y2 or width <= track.x1:
         return None
-    column = screen[track.y1:track.y2, track.x1]
-    blue = column[:, 0].astype('int16')
-    green = column[:, 1].astype('int16')
-    red = column[:, 2].astype('int16')
+    column = screen[track.y1:track.y2, track.x1].astype('int16')
+    blue, green, red = column[:, 0], column[:, 1], column[:, 2]
     thumb = (
+        (blue >= 140) & (blue <= 155)
+        & (blue - green >= 2) & (blue - green <= 6)
+        & (green - red >= 6) & (green - red <= 12)
+    )
+    background = (
         (blue > 100) & (blue < 140)
         & (abs(blue - green) <= 3)
         & (abs(green - red) <= 7)
     )
+    if int((thumb | background).sum()) < len(column) * 0.9 or int(background.sum()) < 15:
+        return None
     best_start = best_length = 0
     run_start = None
-    for index, is_thumb in enumerate(thumb):
+    for index in range(len(thumb) + 1):
+        is_thumb = index < len(thumb) and bool(thumb[index])
         if is_thumb and run_start is None:
             run_start = index
         elif not is_thumb and run_start is not None:
@@ -65,9 +87,20 @@ def find_move_scroll_thumb(screen: MatLike) -> int | None:
             if length > best_length:
                 best_start, best_length = run_start, length
             run_start = None
-    if run_start is not None and len(thumb) - run_start > best_length:
-        best_start, best_length = run_start, len(thumb) - run_start
-    return track.y1 + best_start + best_length // 2 if best_length >= 25 else None
+    if best_length < 25:
+        return None
+    half_length = best_length // 2
+    minimum_y = track.y1 + half_length
+    maximum_y = track.y2 - (best_length - half_length)
+    if maximum_y <= minimum_y:
+        return None
+    return MoveScrollbar(track.y1 + best_start + half_length, minimum_y, maximum_y)
+
+
+def find_move_scroll_thumb(screen: MatLike) -> int | None:
+    """Compatibility accessor for the measured light thumb's center."""
+    scrollbar = observe_move_scrollbar(screen)
+    return scrollbar.center_y if scrollbar is not None else None
 
 
 def recognize_move_cards(
