@@ -1,3 +1,4 @@
+import time
 from typing import Callable, NamedTuple, Literal
 
 import cv2
@@ -16,6 +17,8 @@ from kotonebot import action, Interval, Countdown, device, image, sleep, ocr, co
 from kotonebot.backend.loop import Loop
 from kotonebot import logging
 from kotonebot.core import AnyOf
+from kotonebot.backend.image import find as find_template
+from kotonebot.backend.image import find_all as find_all_templates
 
 class SkillCard(NamedTuple):
     available: bool
@@ -69,6 +72,106 @@ CARD_START_X_5 = 17
 CARD_DELTA_X_5 = -68
 # SKIP 按钮
 SKIP_CARD_BUTTON = CardPosInfo(621, 739, 85, 85, 10)
+
+
+SELECTED_CARD_CONFIRM_RECT = Rect(300, 1105, 120, 60)
+RESOLVING_CARD_LETTER_RECT = Rect(330, 780, 60, 95)
+
+
+def _has_resolving_card(screen: MatLike) -> bool:
+    """Detect the central played-card overlay, not the bottom hand markers."""
+    if screen.shape[0] < 875 or screen.shape[1] < 390:
+        return False
+    return any(
+        find_template(screen, template.template, rect=RESOLVING_CARD_LETTER_RECT, threshold=0.93) is not None
+        for template in (R.InProduce.A, R.InProduce.M, R.InProduce.T)
+    )
+
+
+class CardAnimationGate:
+    """Defer hand clicks while a card resolves, with an eight-second limit."""
+
+    def __init__(self):
+        self.started: float | None = None
+        self.warned = False
+
+    def should_wait(self, screen: MatLike) -> bool:
+        if not _has_resolving_card(screen):
+            self.started = None
+            self.warned = False
+            return False
+        now = time.monotonic()
+        if self.started is None:
+            self.started = now
+            logger.debug('Waiting for central card resolution before another hand click.')
+        if now - self.started < 8:
+            return True
+        if not self.warned:
+            logger.warning('Central card overlay persisted for eight seconds; releasing animation wait.')
+            self.warned = True
+        return False
+
+
+def _hand_layout(screen: MatLike) -> tuple[tuple[int, int, int], ...]:
+    """Track only card markers, not the animated scene or card illustrations."""
+    if screen.shape[0] < 1100 or screen.shape[1] < 715:
+        return ()
+    return tuple(sorted(
+        (kind, match.rect.x1, match.rect.y1)
+        for kind, template in enumerate((R.InProduce.A, R.InProduce.M, R.InProduce.T))
+        for match in find_all_templates(
+            screen, template.template, rect=R.InProduce.BoxCardLetter
+        )
+    ))
+
+
+class HandLayoutGate:
+    """Require a short settled hand before using recognized click coordinates."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self.layout: tuple[tuple[int, int, int], ...] = ()
+        self.started: float | None = None
+        self.stable_since: float | None = None
+        self.warned = False
+
+    def should_wait(self, screen: MatLike) -> bool:
+        layout = _hand_layout(screen)
+        if not layout:
+            self.reset()
+            return False  # Preserve no-hand/result/dialog handling.
+        now = time.monotonic()
+        if self.started is None:
+            self.started = now
+            logger.debug('Waiting for hand layout to settle before a card click.')
+        unchanged = len(layout) == len(self.layout) and all(
+            kind == old_kind and abs(x - old_x) <= 2 and abs(y - old_y) <= 2
+            for (kind, x, y), (old_kind, old_x, old_y) in zip(layout, self.layout)
+        )
+        if not unchanged:
+            self.layout = layout
+            self.stable_since = now
+        if self.stable_since is not None and now - self.stable_since >= 0.3:
+            return False
+        if now - self.started >= 3:
+            if not self.warned:
+                logger.warning('Hand layout did not settle in three seconds; releasing wait.')
+                self.warned = True
+            return False
+        return True
+
+
+
+
+def _confirm_selected_card_preview() -> bool:
+    """Finish a card left in the selected preview state instead of waiting forever."""
+    if ocr.find(contains('SELECT'), rect=SELECTED_CARD_CONFIRM_RECT) is None:
+        return False
+    device.click(SELECTED_CARD_CONFIRM_RECT)
+    logger.info('Confirmed selected skill card preview.')
+    return True
 
 
 def calc_card_position(card_count: int):
@@ -143,6 +246,8 @@ def do_cards(
     drink_selected_idx: int = -1 # 此索引指向drinks_list
     drink_retries = 0
     DRINK_MAX_RETRIES = 5
+    animation_gate = CardAnimationGate()
+    hand_layout_gate = HandLayoutGate()
 
     def try_battle_strategy() -> bool:
         if battle_strategy is None:
@@ -221,6 +326,26 @@ def do_cards(
                 logger.warning('Drink processing stuck. Force to pop drink.')
             continue
 
+        # Hand letters can already be visible while the previous card is
+        # still resolving. Do not treat that as permission to click another
+        # hand card. This sits before both planner and recommendation paths.
+        if animation_gate.should_wait(img):
+            hand_layout_gate.reset()
+            if _confirm_selected_card_preview():
+                sleep(1)
+                skip()
+                sleep(3.5)
+            else:
+                sleep(0.3)
+            timeout_cd.reset()
+            card_count = -1
+            continue
+
+        if hand_layout_gate.should_wait(img):
+            sleep(0.15)
+            card_count = -1
+            continue
+
         # 更新卡片数量
         if card_count == -1 or detect_card_count_cd.expired():
             detect_card_count_cd.reset()
@@ -231,17 +356,23 @@ def do_cards(
             # 处理本回合已无剩余手牌的情况
             # TODO: 使用模板匹配而不是 OCR，提升速度
             no_card_cd.start()
-            no_remaining_card = ocr.find(contains("0枚"), rect=R.InProduce.BoxNoSkillCard)
-            if no_remaining_card and no_card_cd.expired():
-                logger.debug('No remaining card detected. Skip this turn.')
-                # TODO: HARD CODEDED
-                SKIP_POSITION = Rect(621, 739, 85, 85)
-                device.click(SKIP_POSITION)
+            if no_card_cd.expired():
                 no_card_cd.reset()
-                continue
+                if _confirm_selected_card_preview():
+                    card_count = -1
+                    timeout_cd.reset()
+                    continue
+                no_remaining_card = ocr.find(contains("0枚"), rect=R.InProduce.BoxNoSkillCard)
+                if no_remaining_card:
+                    logger.debug('No remaining card detected. Skip this turn.')
+                    # TODO: HARD CODEDED
+                    SKIP_POSITION = Rect(621, 739, 85, 85)
+                    device.click(SKIP_POSITION)
+                    continue
         else:
             if try_battle_strategy():
                 logger.info("Handle battle strategy success with %d tries", tries)
+                hand_layout_gate.reset()
                 sleep(1)
                 skip()
                 sleep(3.5)
@@ -254,6 +385,7 @@ def do_cards(
                 img=img
             ):
                 logger.info("Handle recommended card success with %d tries", tries)
+                hand_layout_gate.reset()
                 sleep(1)
                 skip()
                 sleep(3.5)

@@ -514,11 +514,31 @@ class SkillCard:
         )
 
     @classmethod
-    def from_asset_id(cls, asset_id: str) -> 'SkillCard | None':
+    def from_asset_id(
+        cls,
+        asset_id: str,
+        upgrade_count: int = 0,
+    ) -> 'SkillCard | None':
         """
-        根据 asset_id 查询 SkillCard。
+        根据 asset_id 和强化次数查询 SkillCard。
+
+        同一个卡面资源通常对应基础、+、++、+++ 四行。旧实现未指定排序，
+        结果依赖 SQLite 返回顺序；默认显式选择基础版，识别到强化标记时由
+        调用方传入 ``upgrade_count=1``。
         """
-        row = select(f'{PRODUCE_CARD_SELECT} WHERE assetId = ?;', asset_id)
+        row = select(
+            f'{PRODUCE_CARD_SELECT} '
+            'WHERE assetId = ? AND upgradeCount = ? '
+            'ORDER BY upgradeCount ASC LIMIT 1;',
+            asset_id,
+            upgrade_count,
+        )
+        if row is None and upgrade_count != 0:
+            row = select(
+                f'{PRODUCE_CARD_SELECT} '
+                'WHERE assetId = ? ORDER BY upgradeCount ASC LIMIT 1;',
+                asset_id,
+            )
         if row is None:
             return None
         effect_map = _load_exam_effects_from_rows([row])

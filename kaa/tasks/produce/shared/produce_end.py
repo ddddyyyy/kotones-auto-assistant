@@ -1,5 +1,8 @@
 """培育结束流程。"""
 import logging
+from cv2.typing import MatLike
+from kotonebot.backend.ocr import en
+from kotonebot.primitives import Rect
 
 from kaa.game_ui import WhiteFilter, dialog
 from kaa.kaa_context import produce_solution
@@ -13,6 +16,16 @@ from kotonebot import action
 from kotonebot import contains
 
 logger = logging.getLogger(__name__)
+BOX_FAILED_EXAM_NEXT = Rect(250, 1100, 300, 100)
+
+
+def _failed_exam_next_visible(screen: MatLike) -> bool:
+    """Recognize the bottom TAP prompt on the failed-exam judgement overlay."""
+    return any(
+        result.text.upper().startswith('TAP') and result.confidence >= 0.75
+        for result in en().ocr(screen, rect=BOX_FAILED_EXAM_NEXT)
+    )
+
 
 
 # TODO: 将这个函数改为手动截图模式
@@ -99,6 +112,9 @@ def produce_end(has_live: bool = True):
             logger.info("Generate memory cover completed.")
             device.click(gen_btn)
             break
+        elif not has_live and _failed_exam_next_visible(device.screenshot()):
+            logger.info('Advancing failed-exam judgement screen.')
+            device.click(360, 1150)
         else:
             device.click_center()
             skip()  # 为了兼容has_live==False的情况
@@ -113,6 +129,8 @@ def produce_end(has_live: bool = True):
     # 四个完成画面
     logger.info("Finalize")
     for _ in Loop():
+        if at_home():
+            break
         # [screenshots/produce_end/end_next_1.jpg]
         # [screenshots/produce_end/end_next_2.png]
         # [screenshots/produce_end/end_next_3.png]

@@ -76,5 +76,8 @@ def identify_idol_card(card_img):
         logger.warning('Failed to match idol card image.')
         return None
     skin_id = match.key.rsplit('_', 1)[0]
-    logger.info('Identified idol card: %s (key=%s)', skin_id, match.key)
+    logger.info(
+        'Identified idol card: %s (key=%s, votes=%d, distance=%.2f)',
+        skin_id, match.key, match.votes, match.distance,
+    )
     return skin_id

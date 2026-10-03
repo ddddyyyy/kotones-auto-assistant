@@ -8,6 +8,8 @@ from kaa.tasks.produce.new.strategies.standard import StandardStrategy
 from kaa.tasks.produce.session import ProduceSession, resolve_deck
 from kaa.tasks.produce.shared.common import resume_produce_pre
 from kaa.tasks.produce.new.controller import ProduceController
+from kaa.tasks.produce.new.consts import SceneType
+from kaa.tasks.produce.new.page import ProducePage
 from kaa.tasks import R
 from kaa.config import conf
 from kaa.game_ui import dialog
@@ -21,6 +23,27 @@ from .prepare import prepare, prepare_hif_main
 from kotonebot.errors import UnrecoverableError
 
 logger = logging.getLogger(__name__)
+
+_ACTIVE_PRODUCE_SCENES = {
+    SceneType.ACTION_SELECT,
+    SceneType.PRACTICE,
+    SceneType.EXAM,
+    SceneType.STUDY,
+    SceneType.OUTING,
+    SceneType.CONSULT,
+    SceneType.ALLOWANCE,
+    SceneType.SELECT_DRINK,
+    SceneType.SELECT_CARD,
+    SceneType.SELECT_PITEM,
+    SceneType.SKILL_CARD_ENHANCE,
+    SceneType.SKILL_CARD_REMOVAL,
+    SceneType.SKILL_CARD_CHANGE_1,
+    SceneType.SKILL_CARD_CHANGE_2,
+    SceneType.INITIAL_DRINK_OR_CARD_SELECT,
+    SceneType.PDRINK_MAX,
+    SceneType.PDRINK_MAX_CONFIRM,
+    SceneType.PRODUCE_END,
+}
 
 
 def format_time(seconds):
@@ -147,6 +170,37 @@ def resume_produce():
     finally:
         clear_produce_session()
 
+
+def _resume_active_new_engine_produce(
+    idol_skin_id: str,
+    scenario: Scenario,
+) -> bool:
+    """Resume when the task starts while the game is already inside produce."""
+    device.screenshot()
+    scene = ProducePage().check_scene()
+    if scene is None or scene.type not in _ACTIVE_PRODUCE_SCENES:
+        return False
+
+    logger.info('Detected active produce scene %s; resuming in place.', scene.type.name)
+    session = ProduceSession(
+        idol_card=idol_skin_id,
+        scenario=scenario,
+        is_resumed=True,
+        deck=resolve_deck(idol_skin_id, produce_solution().data.card_deck_id),
+    )
+    init_produce_session(session)
+    try:
+        if isinstance(scenario, HajimeScenario):
+            controller = ProduceController(scenario=scenario, strategy=StandardStrategy)
+        elif isinstance(scenario, HifScenario):
+            controller = ProduceController(scenario=scenario, strategy=HifGrindStrategy)
+        else:
+            raise NotImplementedError(f'Unsupported produce scenario: {scenario}')
+        controller.run()
+    finally:
+        clear_produce_session()
+    return True
+
 @action('执行培育', screenshot_mode='manual')
 def do_produce(
     idol_skin_id: str,
@@ -171,6 +225,9 @@ def do_produce(
         raise ValueError('`memory_set_index` must be in range [1, 20].')
     if support_card_set_index is not None and not 1 <= support_card_set_index <= 20:
         raise ValueError('`support_card_set_index` must be in range [1, 20].')
+
+    if _resume_active_new_engine_produce(idol_skin_id, scenario):
+        return True
 
     if not at_home():
         goto_home()
@@ -338,6 +395,7 @@ def produce():
     config_issues = validate_produce_solution(solution)
     if config_issues:
         raise UnrecoverableError(f'配置有误：{config_issues}')
+    assert idol is not None
 
     for i in range(count):
         start_time = time.time()

@@ -1,5 +1,6 @@
 from kotonebot import Countdown, device, logging, Loop, sleep, ocr
 from kotonebot.errors import UnrecoverableError
+from kotonebot.primitives import Rect
 
 from kaa.tasks import R
 from kaa.game_ui import dialog
@@ -8,6 +9,12 @@ from kaa.errors import IdolCardNotFoundError
 from kaa.game_ui.idols_overview import locate_idol, match_idol
 
 logger = logging.getLogger(__name__)
+
+# The old resource regions also include the formation-details button, whose
+# icon can resemble a checkbox. Keep these overrides in tracked source rather
+# than the generated R.py so resource rebuilds cannot undo the fix.
+NOTE_BOOST_REGION = Rect(x=510, y=1000, w=65, h=50)
+PT_BOOST_REGION = Rect(x=600, y=1000, w=65, h=50)
 
 
 def _select_idol(skin_id: str):
@@ -242,10 +249,14 @@ def step4(note_boost: bool, pt_boost: bool) -> bool:
         logger.debug('Not at step4, returning False')
         return False
 
-    if chk := R.Produce.Step4.CheckboxNoteBoost.q(threshold=0.6).find():
+    if chk := R.Produce.Step4.CheckboxNoteBoost.q(
+        threshold=0.8, region=NOTE_BOOST_REGION,
+    ).find():
         chk.set_checked(note_boost)
         sleep(1)
-    if chk := R.Produce.Step4.CheckboxPtBoost.q(threshold=0.6).find():
+    if chk := R.Produce.Step4.CheckboxPtBoost.q(
+        threshold=0.8, region=PT_BOOST_REGION,
+    ).find():
         chk.set_checked(pt_boost)
         sleep(1)
 

@@ -5,6 +5,8 @@
 覆盖授業、外出、考试、行动选择等常规场景的决策逻辑。
 """
 
+import re
+import unicodedata
 from typing import TYPE_CHECKING, Literal
 from typing_extensions import override
 
@@ -36,6 +38,13 @@ if TYPE_CHECKING:
     from ..controller import ProduceController
 
 logger = logging.getLogger(__name__)
+
+
+def _study_gain(description: str) -> int | None:
+    """Read the parameter gain from a study option's OCR description."""
+    normalized = unicodedata.normalize('NFKC', description)
+    match = re.search(r'\+\s*(\d{1,3})', normalized)
+    return int(match.group(1)) if match is not None else None
 
 def _lesson_to_sp(lesson: ProduceAction | None) -> ProduceAction | None:
     match lesson:
@@ -125,13 +134,24 @@ class StandardStrategy(ProduceStrategy):
         else:
             logger.info("授業 type: Normal.")
             options = ctx.fetch_options()
-            # 选中 +30 的选项
-            target_btn = next((btn for btn in options if '+30' in btn.description), None)
-            if target_btn is None:
-                logger.error("Failed to find +30 option. Pick the second button instead.")
-                target_btn = options[1]
-            logger.debug('Picking "%s".', target_btn.description)
-            ctx.commit(options.index(target_btn))
+            gains = [_study_gain(btn.description) for btn in options]
+            # 保留原先的 +30 偏好；课程可能只提供 +25、+40、+50，
+            # 此时根据实际描述选择增量最高的选项，而非固定第二项。
+            target_index = next((i for i, gain in enumerate(gains) if gain == 30), None)
+            if target_index is None:
+                readable = [(i, gain) for i, gain in enumerate(gains) if gain is not None]
+                if readable:
+                    target_index = max(readable, key=lambda item: item[1])[0]
+                    logger.info('No +30 study option; choosing readable gain +%d.', gains[target_index])
+                else:
+                    target_index = min(1, len(options) - 1)
+                    logger.warning(
+                        'No readable study gain; using option %d. Descriptions: %s',
+                        target_index + 1,
+                        [btn.description for btn in options],
+                    )
+            logger.debug('Picking "%s".', options[target_index].description)
+            ctx.commit(target_index)
 
     def on_outing(self, ctx: 'OutingContext'):
         # 固定选中第二个选项
@@ -416,8 +436,10 @@ class StandardStrategy(ProduceStrategy):
                     device.click_center()
                 else:
                     break
-            
-            produce_end(has_live=is_exam_passed)
+
+            # The final exam still plays its MV and offers cover selection
+            # after a failed judgement. Only a failed mid-exam has no live.
+            produce_end(has_live=True)
             self.controller.abort()
         else:
             if not is_exam_passed:

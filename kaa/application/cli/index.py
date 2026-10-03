@@ -91,13 +91,17 @@ def task() -> None:
 @click.pass_context
 def invoke(ctx: click.Context, task_ids: tuple[str, ...], raw_kwargs: str | None) -> None:
     """Invoke a task or many tasks"""
+    from kaa.util.logging import add_file_logger, setup
+
+    setup()
     task_ids_list = list(task_ids)
     if not task_ids_list:
         raise click.UsageError('No tasks specified.')
 
-    unknown = [t for t in task_ids_list if t != '*' and t not in task_registry]
+    registered_ids = {task.id for task in task_registry.values()}
+    unknown = [t for t in task_ids_list if t != '*' and t not in registered_ids]
     if unknown:
-        available = ', '.join(task_registry.keys())
+        available = ', '.join(sorted(registered_ids))
         raise click.UsageError(
             f'Unknown task id(s): {", ".join(unknown)}. Available: {available}'
         )
@@ -107,7 +111,6 @@ def invoke(ctx: click.Context, task_ids: tuple[str, ...], raw_kwargs: str | None
     if log_level is None:
         raise click.UsageError(f'Invalid log level: {ctx.obj["log_level"]}')
     kaa.set_log_level(log_level)
-    from kaa.util.logging import add_file_logger
     if ctx.obj['log_path'] is not None:
         add_file_logger(ctx.obj['log_path'])
 

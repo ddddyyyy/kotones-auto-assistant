@@ -39,6 +39,11 @@ def test_skill_card_from_asset_id():
     assert card is not None
     assert card.name
 
+    upgraded = SkillCard.from_asset_id('img_general_skillcard_ido-3_102', 1)
+    assert upgraded is not None
+    assert upgraded.upgrade_count == 1
+    assert upgraded.name.endswith('+')
+
 
 def test_school_event_load_all():
     events = SchoolEvent.load_all()

@@ -176,6 +176,16 @@ def handle_skill_card_removal():
             break
     logger.debug("Handle skill card removal finished.")
 
+def identify_resume_idol_card(screen: MatLike, *, saving_layout: bool) -> str | None:
+    """Crop the idol card from the resume dialog layout already identified."""
+    box = (
+        R.Produce.BoxResumeDialogIdolCard_Saving
+        if saving_layout else R.Produce.BoxResumeDialogIdolCard
+    )
+    x, y, w, h = box.xywh
+    return identify_idol_card(screen[y:y+h, x:x+w])
+
+
 @action('继续当前培育.进入培育', screenshot_mode='manual')
 def resume_produce_pre() -> tuple[Scenario, int, str]:
     """
@@ -214,23 +224,10 @@ def resume_produce_pre() -> tuple[Scenario, int, str]:
         raise ValueError('Failed to detect produce scenario.')
     logger.info(f'Produce scenario: {scenario}')
 
-    # 识别偶像卡
-    device.screenshot()
-    idol_card_skin_id = None
-    for box in (R.Produce.BoxResumeDialogIdolCard, R.Produce.BoxResumeDialogIdolCard_Saving):
-        img = device.screenshot()
-        x, y, w, h = box.xywh
-        crop = img[y:y+h, x:x+w]
-        idol_card_skin_id = identify_idol_card(crop)
-        if idol_card_skin_id is not None:
-            break
-    if idol_card_skin_id is None:
-        raise UnrecoverableError('Failed to identify idol card from resume dialog.')
-    logger.info(f'Resume produce for idol: {idol_card_skin_id}')
-
     retry_count = 0
     max_retries = 5
     current_week = None
+    saving_layout = False
     while retry_count < max_retries:
         week_text = ocr.ocr(R.Produce.BoxResumeDialogWeeks, lang='en').squash().regex(r'\d+/\d+')
         logger.debug('Week text: %s', week_text)
@@ -247,6 +244,7 @@ def resume_produce_pre() -> tuple[Scenario, int, str]:
             logger.info(f'Current week: {weeks[0]}/{weeks[1]}')
             if len(weeks) >= 2:
                 current_week = int(weeks[0])
+                saving_layout = True
                 break
         retry_count += 1
         logger.warning(f'Failed to detect weeks. week_text="{week_text}". Retrying... ({retry_count}/{max_retries})')
@@ -257,6 +255,13 @@ def resume_produce_pre() -> tuple[Scenario, int, str]:
         raise ValueError('Failed to detect weeks after multiple retries.')
     if current_week is None:
         raise ValueError('Failed to detect current_week.')
+    logger.info('Resume dialog layout: %s.', 'saving' if saving_layout else 'normal')
+    idol_card_skin_id = identify_resume_idol_card(
+        device.screenshot(), saving_layout=saving_layout
+    )
+    if idol_card_skin_id is None:
+        raise UnrecoverableError('Failed to identify idol card from resume dialog.')
+    logger.info('Resume produce for idol: %s', idol_card_skin_id)
     # 点击 再開する
     # [kotonebot-resource/sprites/jp/produce/produce_resume.png]
     logger.info('Click resume button.')
