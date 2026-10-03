@@ -155,9 +155,22 @@ def resume_produce():
     """
 
     scenario, current_week, idol_card = resume_produce_pre()
+    solution = produce_solution()
+    strategy_idol_card = solution.data.idol or idol_card
+    if idol_card != strategy_idol_card:
+        logger.warning(
+            'Resume idol match %s differs from configured %s; '
+            'using the configured card for archetype and deck.',
+            idol_card, strategy_idol_card,
+        )
 
-    session = ProduceSession(idol_card=idol_card, scenario=scenario, is_resumed=True,
-        deck=resolve_deck(idol_card, produce_solution().data.card_deck_id))
+    session = ProduceSession(
+        idol_card=idol_card,
+        scenario=scenario,
+        is_resumed=True,
+        deck=resolve_deck(strategy_idol_card, solution.data.card_deck_id),
+        strategy_idol_card=strategy_idol_card,
+    )
     init_produce_session(session)
     try:
         if isinstance(scenario, HajimeScenario):

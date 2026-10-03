@@ -578,6 +578,11 @@ def _collect_exam_effect_ids(rows) -> set[str]:
 
 def _load_exam_effects_from_rows(rows) -> dict[str, ProduceExamEffect]:
     ids = _collect_exam_effect_ids(rows)
+    return load_exam_effects(ids)
+
+
+def load_exam_effects(ids: set[str]) -> dict[str, ProduceExamEffect]:
+    """Load reusable exam effects by ID for cards, enchants and items."""
     if not ids:
         return {}
     effect_rows = load_by_ids('ProduceExamEffect', ids, columns=PRODUCE_EXAM_EFFECT_COLUMNS)
@@ -585,7 +590,7 @@ def _load_exam_effects_from_rows(rows) -> dict[str, ProduceExamEffect]:
     for row in effect_rows:
         parsed = ProduceExamEffectRow.model_validate(row_dict(row))
         result[parsed.id] = ProduceExamEffect.from_row(parsed)
-    log_missing_ids('ProduceExamEffect for skill cards', ids, result)
+    log_missing_ids('ProduceExamEffect', ids, result)
     return result
 
 

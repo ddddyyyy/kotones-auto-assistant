@@ -25,6 +25,123 @@ CARD_SCALE = 168 / 256 # 原始卡面图像 到 1280x720 截图中卡面图像�
 
 logger = logging.getLogger(__name__)
 
+
+def _has_upgrade_marker(img: MatLike, letter_rect: Rect) -> bool:
+    """Detect the red ``+`` at the lower-right of an unobscured hand card."""
+    center_x = int(letter_rect.center.x)
+    top_y = int(letter_rect.y1)
+    h, w = img.shape[:2]
+    x1, x2 = max(0, center_x + 60), min(w, center_x + 110)
+    y1, y2 = max(0, top_y - 65), min(h, top_y - 10)
+    if x1 >= x2 or y1 >= y2:
+        return False
+    marker = img[y1:y2, x1:x2]
+    # The marker is saturated pink/red. Requiring an area, rather than one
+    # pixel, rejects compression noise and the nearby green cost badge.
+    red = (
+        (marker[:, :, 2] > 210)
+        & (marker[:, :, 1] < 170)
+        & (marker[:, :, 0] < 210)
+    )
+    _, _, stats, _ = cv2.connectedComponentsWithStats(red.astype('uint8'))
+    return any(
+        width >= 12 and height >= 12 and area >= 100
+        for _, _, width, height, area in stats[1:]
+    )
+
+
+def _upgrade_marker_visible(letter_rect: Rect, next_letter: Rect | None) -> bool:
+    """Whether the next card leaves the lower-right upgrade badge exposed."""
+    return (
+        next_letter is None
+        or next_letter.center.x - letter_rect.center.x >= 140
+    )
+
+
+def _visible_upgrade_count(img: MatLike, letter_rect: Rect) -> int:
+    """Count trailing ``+`` glyphs in an unobscured card's name strip.
+
+    The card artwork is shared by all upgrade levels. The title suffix is the
+    only visible distinction between +, ++ and +++. A glyph is accepted only
+    when both its horizontal and vertical strokes span the component and it
+    belongs to the rightmost, contiguous suffix; Japanese name strokes elsewhere
+    in the title must not count as upgrades.
+    """
+    center_x = int(letter_rect.center.x)
+    top_y = int(letter_rect.y1)
+    height, width = img.shape[:2]
+    x1, x2 = max(0, center_x - 100), min(width, center_x + 100)
+    y1, y2 = max(0, top_y + 20), min(height, top_y + 46)
+    if x1 >= x2 or y1 >= y2:
+        return 0
+    title = img[y1:y2, x1:x2]
+    gray = cv2.cvtColor(title, cv2.COLOR_BGR2GRAY)
+    # Selected cards render the final suffix in cyan rather than dark gray.
+    cyan = (
+        (title[:, :, 0] > 235)
+        & (title[:, :, 1] > 130)
+        & (title[:, :, 1] < 230)
+        & (title[:, :, 2] < 140)
+    )
+    faded_cyan = (
+        (title[:, :, 0] > 220)
+        & (title[:, :, 1] > 130)
+        & (title[:, :, 0].astype('int16') - title[:, :, 1] > 5)
+        & (title[:, :, 0].astype('int16') - title[:, :, 2] > 12)
+    )
+    return max(
+        _count_upgrade_suffix(((gray < 150) | mask).astype('uint8'))
+        for mask in (cyan, faded_cyan)
+    )
+
+
+def _count_upgrade_suffix(ink: MatLike) -> int:
+    """Count only contiguous cross-shaped glyphs at the end of a title."""
+    labels, _, stats, _ = cv2.connectedComponentsWithStats(ink)
+    glyphs: list[tuple[int, int, int, bool]] = []
+    for component in range(1, labels):
+        x, y, w, h, area = (int(v) for v in stats[component])
+        if not (5 <= area and 5 <= w <= 22 and 7 <= h <= 20):
+            continue
+        shape = ink[y:y+h, x:x+w]
+        is_plus = (
+            8 <= w <= 12
+            and 8 <= h <= 12
+            and 14 <= area <= 45
+            and shape[h // 2, :].mean() >= 0.8
+            and shape[:, w // 2].mean() >= 0.75
+        )
+        glyphs.append((x, y, w, is_plus))
+    glyphs.sort(key=lambda glyph: glyph[0])
+    if not glyphs or not glyphs[-1][3]:
+        return 0
+    suffix = 1
+    for previous, following in zip(reversed(glyphs[:-1]), reversed(glyphs[1:])):
+        if not previous[3] or following[0] - (previous[0] + previous[2]) > 6:
+            break
+        if abs(previous[1] - following[1]) > 4:
+            break
+        suffix += 1
+    return min(suffix, 3)
+
+
+def _observed_upgrade_count(
+    img: MatLike, letter_rect: Rect, next_letter: Rect | None,
+) -> int:
+    """Read an exposed title suffix even if the red badge is faded."""
+    if not _upgrade_marker_visible(letter_rect, next_letter):
+        return 0
+    suffix = _visible_upgrade_count(img, letter_rect)
+    if _has_upgrade_marker(img, letter_rect):
+        return max(1, suffix)
+    # The title crop spans 200 px. A readable badge does not imply that its
+    # trailing title is exposed in a crowded hand.
+    title_visible = (
+        next_letter is None
+        or next_letter.center.x - letter_rect.center.x >= 200
+    )
+    return suffix if title_visible else 0
+
 @dataclass
 class CardGameObject(GameObject):
     rect: Rect
@@ -127,6 +244,7 @@ def _locate_letters(img: MatLike) -> list[Rect]:
 
 def locate_cards(img: MatLike):
     letters = _locate_letters(img)
+    ordered_letters = sorted(letters, key=lambda item: item.center.x)
     # 根据字母的位置，计算出左半边卡面的范围
     # 字母往上 195px，往左 95px
     card_regions = []
@@ -153,7 +271,13 @@ def locate_cards(img: MatLike):
                 suffix = '-' + c.value
                 card_id = card_id.removesuffix(suffix)
             # 查数据库
-            db_card = SkillCard.from_asset_id(card_id)
+            # The marker is visible on any sufficiently separated card, not
+            # just the rightmost one. With a crowded hand the next card covers
+            # it; never interpret that occlusion as evidence of a base card.
+            index = ordered_letters.index(letter)
+            next_letter = ordered_letters[index + 1] if index + 1 < len(ordered_letters) else None
+            upgrade_count = _observed_upgrade_count(img, letter, next_letter)
+            db_card = SkillCard.from_asset_id(card_id, upgrade_count)
             card = CardGameObject(
                 rect=region,
                 res_name=result.key,

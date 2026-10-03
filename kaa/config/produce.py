@@ -57,7 +57,7 @@ class ProduceData(ConfigBaseModel):
     启用后，若出现 SP 课程，则会优先执行 SP 课程，而不是推荐课程。
     若出现多个 SP 课程，随机选择一个。
     """
-    battle_strategy: Literal['bandai', 'expert'] = 'bandai'
+    battle_strategy: Literal['bandai', 'expert', 'planner'] = 'bandai'
     """战斗策略。"""
     actions_order: list[ProduceAction] = [
         ProduceAction.RECOMMENDED,

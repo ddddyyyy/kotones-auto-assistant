@@ -14,6 +14,52 @@ def _clock(monkeypatch):
     return clock
 
 
+def test_sampling_catches_banner_in_former_blind_window_without_clicks(monkeypatch):
+    clock = _clock(monkeypatch)
+    samples = []
+    results = []
+    monkeypatch.setattr(cards, 'skip', lambda: (_ for _ in ()).throw(AssertionError('no skip')))
+    def observe(frame):
+        samples.append(frame)
+        if 2.2 <= frame <= 2.8:
+            results.append('CLEAR')
+    cards._finish_card_animation(observe)
+    assert results == ['CLEAR']
+    assert samples == [0.5 * index for index in range(1, 10)]
+    assert clock.now == 4.5
+
+
+def test_sampling_budget_includes_slow_ocr(monkeypatch):
+    clock = _clock(monkeypatch)
+    samples = []
+    def observe(frame):
+        samples.append(frame)
+        clock.now += 1.0
+    cards._finish_card_animation(observe)
+    assert samples == [0.5, 2.0, 3.5]
+    assert clock.now == 4.5
+
+
+def test_sampling_is_bounded_even_if_observer_is_very_slow(monkeypatch):
+    clock = _clock(monkeypatch)
+    samples = []
+    def observe(frame):
+        samples.append(frame)
+        clock.now += 10
+    cards._finish_card_animation(observe)
+    assert samples == [0.5]
+
+
+def test_legacy_animation_keeps_original_skip_and_waits(monkeypatch):
+    delays = []
+    skipped = []
+    monkeypatch.setattr(cards, 'sleep', delays.append)
+    monkeypatch.setattr(cards, 'skip', lambda: skipped.append(True))
+    cards._finish_card_animation(None)
+    assert delays == [1, 3.5]
+    assert skipped == [True]
+
+
 def test_animation_gate_waits_then_releases_on_missing_overlay(monkeypatch):
     clock = _clock(monkeypatch)
     visible = [True]

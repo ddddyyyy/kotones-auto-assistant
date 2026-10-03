@@ -898,7 +898,8 @@ PageContainer {
                             label: "打牌策略"
                             options: [
                                 { label: "游戏 AI", value: "bandai" },
-                                { label: "脚本简单 AI（实验性）", value: "expert" }
+                                { label: "脚本简单 AI（实验性）", value: "expert" },
+                                { label: "规划器 AI（实验性）", value: "planner" }
                             ]
                         }
                         FormComboBox {

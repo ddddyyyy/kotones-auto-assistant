@@ -6,9 +6,11 @@
 """
 
 import re
+import time
 import unicodedata
 from typing import TYPE_CHECKING, Literal
 from typing_extensions import override
+from cv2.typing import MatLike
 
 from kaa.tasks.produce.new.page import SkillCardChangeContext
 from kotonebot import logging, sleep, device, Loop
@@ -21,6 +23,9 @@ from kaa.tasks import R
 from kaa.tasks.common import skip
 from kaa.tasks.produce.shared.cards import CardDetectResult, do_cards
 from kaa.tasks.produce.new.play_cards.expert_strategy import ExpertSystemStrategy
+from kaa.tasks.produce.new.play_cards.planner import PlannerStrategy
+from kaa.tasks.produce.new.play_cards.practice_result import read_practice_result
+from kaa.tasks.produce.new.play_cards.practice_evidence import PracticeResultEvidence
 from kaa.kaa_context import produce_solution
 from kaa.config.const import ProduceAction
 from kaa.tasks.produce.shared.common import ProduceInterrupt, acquisition_date_change_dialog, use_strict_card_detection
@@ -112,18 +117,35 @@ def _matches(cfg: ProduceAction, avail: ProduceAction) -> bool:
     return False
 
 
-def _build_battle_strategy(threshold_predicate):
+def _build_battle_strategy(threshold_predicate, *, is_exam: bool = False):
     battle_strategy = produce_solution().data.battle_strategy
     logger.info('Battle strategy: %s.', battle_strategy)
     if battle_strategy == 'bandai':
         return BandaiStrategy(threshold_predicate)
     if battle_strategy == 'expert':
         return ExpertSystemStrategy()
+    if battle_strategy == 'planner':
+        return PlannerStrategy(is_exam=is_exam)
     raise UnrecoverableError(f'Unknown produce battle strategy: {battle_strategy}')
 
 class StandardStrategy(ProduceStrategy):
     def __init__(self, controller: 'ProduceController') -> None:
         super().__init__(controller)
+        self._practice_result: str | None = None
+        self._practice_evidence: PracticeResultEvidence | None = None
+
+    def _observe_practice_result(self, screen: MatLike | None = None) -> None:
+        frame = screen
+        try:
+            if frame is None:
+                frame = device.screenshot()
+            self._practice_result = read_practice_result(frame)
+        except Exception:
+            # Outcome logging must never interrupt an otherwise valid run.
+            logger.debug('Could not read the practice result banner.', exc_info=True)
+        finally:
+            if self._practice_evidence is not None and frame is not None:
+                self._practice_evidence.observe(frame, self._practice_result)
 
     def on_study(self, ctx: 'StudyContext'):
         if ctx.is_self_study():
@@ -324,6 +346,21 @@ class StandardStrategy(ProduceStrategy):
 
     def on_practice_entered(self, ctx: 'PracticeContext'):
         logger.info("Practice started")
+        self._practice_result = None
+        self._practice_evidence = PracticeResultEvidence.from_environment()
+        next_result_probe = 0.0
+
+        def observe_result_frame(screen: MatLike) -> None:
+            nonlocal next_result_probe
+            if self._practice_result is not None:
+                return
+            now = time.monotonic()
+            if now < next_result_probe:
+                return
+            # The result banner may overlap the fading battle HUD. OCR only
+            # accepts an explicit grade in the lower banner area.
+            self._observe_practice_result(screen)
+            next_result_probe = now + 0.4
         # TODO: 目前练习和考试的实现都不符合数据解析/模拟输入、决策分析这两者分离的写法，后续需要重构
         def threshold_predicate(card_count: int, result: CardDetectResult):
             border_scores = (result.left_score, result.right_score, result.top_score, result.bottom_score)
@@ -340,15 +377,33 @@ class StandardStrategy(ProduceStrategy):
             # 提高平均阈值，且同时要求至少有 3 边达到阈值。
 
         def end_predicate():
-            return not AnyOf[
+            battle_visible = AnyOf[
                 R.InProduce.TextClearUntil,
                 R.InProduce.TextPerfectUntil
             ].exists()
+            if battle_visible:
+                return False
+            observe_result_frame(device.screenshot())
+            return True
     
-        do_cards(False, threshold_predicate, end_predicate, battle_strategy=_build_battle_strategy(threshold_predicate))
+        do_cards(
+            False, threshold_predicate, end_predicate,
+            battle_strategy=_build_battle_strategy(threshold_predicate),
+            result_observer=observe_result_frame,
+        )
 
     def on_practice_exited(self):
-        pass
+        # The result banner can appear a moment after battle HUD vanishes.
+        # Keep this bounded: no clicks, and no inferred result if OCR misses it.
+        for attempt in range(3):
+            if self._practice_result is not None:
+                break
+            if attempt:
+                sleep(0.6)
+            self._observe_practice_result()
+        logger.info('Practice result: %s', self._practice_result or 'unconfirmed')
+        if self._practice_evidence is not None:
+            self._practice_evidence.finish()
 
     def on_exam_entered(self, ctx: 'ExamContext'):
         type: Literal['mid', 'final'] = 'final'
@@ -416,7 +471,15 @@ class StandardStrategy(ProduceStrategy):
                 and R.Common.ButtonNext.find()
             )
 
-        do_cards(True, threshold_predicate, end_predicate, battle_strategy=_build_battle_strategy(threshold_predicate))
+        do_cards(
+            True,
+            threshold_predicate,
+            end_predicate,
+            battle_strategy=_build_battle_strategy(
+                threshold_predicate,
+                is_exam=True,
+            ),
+        )
 
 
         R.Common.ButtonNext.wait().click()

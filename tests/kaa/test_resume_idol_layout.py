@@ -48,3 +48,14 @@ def test_resumed_idol_id_determines_planner_archetype():
 
     assert full_power.archetype == ProduceExamEffectType.ExamFullPower
     assert false_match.archetype == ProduceExamEffectType.ExamParameterBuff
+
+
+def test_configured_card_keeps_full_power_after_avatar_mismatch():
+    session = ProduceSession(
+        idol_card='i_card-skin-kllj-1-001',
+        scenario=HajimeScenario.MASTER,
+        is_resumed=True,
+        strategy_idol_card='i_card-skin-shro-3-008',
+    )
+
+    assert session.archetype == ProduceExamEffectType.ExamFullPower

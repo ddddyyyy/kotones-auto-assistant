@@ -1,5 +1,5 @@
-import time
 from typing import Callable, NamedTuple, Literal
+import time
 
 import cv2
 from cv2.typing import MatLike
@@ -12,6 +12,12 @@ from kaa.config import conf
 from kaa.game_ui import dialog
 from kaa.tasks.produce.shared.common import acquisition_date_change_dialog
 from kaa.tasks.produce.new.play_cards.strategy import AbstractBattleStrategy
+from kaa.tasks.produce.new.play_cards.move_selection import (
+    MOVE_CARD_AREA,
+    MoveCardOption,
+    find_move_scroll_thumb,
+    recognize_move_cards,
+)
 from kotonebot.primitives import RectTuple, Rect
 from kotonebot import action, Interval, Countdown, device, image, sleep, ocr, contains, use_screenshot, color
 from kotonebot.backend.loop import Loop
@@ -72,8 +78,6 @@ CARD_START_X_5 = 17
 CARD_DELTA_X_5 = -68
 # SKIP 按钮
 SKIP_CARD_BUTTON = CardPosInfo(621, 739, 85, 85, 10)
-
-
 SELECTED_CARD_CONFIRM_RECT = Rect(300, 1105, 120, 60)
 RESOLVING_CARD_LETTER_RECT = Rect(330, 780, 60, 95)
 
@@ -163,8 +167,6 @@ class HandLayoutGate:
         return True
 
 
-
-
 def _confirm_selected_card_preview() -> bool:
     """Finish a card left in the selected preview state instead of waiting forever."""
     if ocr.find(contains('SELECT'), rect=SELECTED_CARD_CONFIRM_RECT) is None:
@@ -172,6 +174,26 @@ def _confirm_selected_card_preview() -> bool:
     device.click(SELECTED_CARD_CONFIRM_RECT)
     logger.info('Confirmed selected skill card preview.')
     return True
+
+
+def _finish_card_animation(result_observer: Callable[[MatLike], None] | None) -> None:
+    if result_observer is None:
+        # Preserve the legacy/exam animation path.
+        sleep(1)
+        skip()
+        sleep(3.5)
+        return
+    # The former samples at 1s, 1.7s and 4.5s left a 2.8s blind window,
+    # long enough for an entire result banner to appear and disappear. Sample
+    # throughout the same bounded window; include OCR time in the deadline
+    # rather than adding nine full waits on top of slow recognition.
+    deadline = time.monotonic() + 4.5
+    for _ in range(9):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        sleep(min(0.5, remaining))
+        result_observer(device.screenshot())
 
 
 def calc_card_position(card_count: int):
@@ -221,6 +243,7 @@ def do_cards(
         end_predicate: Callable[[], bool],
         *,
         battle_strategy: AbstractBattleStrategy | None = None,
+        result_observer: Callable[[MatLike], None] | None = None,
     ):
     """
     循环打出推荐卡，直到考试/练习结束
@@ -249,6 +272,10 @@ def do_cards(
     animation_gate = CardAnimationGate()
     hand_layout_gate = HandLayoutGate()
 
+    def finish_card_animation() -> None:
+        hand_layout_gate.reset()
+        _finish_card_animation(result_observer)
+
     def try_battle_strategy() -> bool:
         if battle_strategy is None:
             return False
@@ -264,12 +291,15 @@ def do_cards(
             return False
 
     for _ in Loop(interval=1/30):
-        skip()
+        if card_count == 0 and result_observer is not None:
+            result_observer(device.screenshot())
+        if result_observer is None:
+            skip()
         img = device.screenshot()
 
         # 技能卡自选移动对话框
         if R.InProduce.IconTitleSkillCardMove.exists():
-            if handle_skill_card_move():
+            if handle_skill_card_move(battle_strategy):
                 sleep(4)  # 等待卡片刷新
                 continue
         # 饮品详细对话框（需要在 ButtonIconCheckMark 之前，因为ButtonUse也是√）
@@ -332,10 +362,10 @@ def do_cards(
         if animation_gate.should_wait(img):
             hand_layout_gate.reset()
             if _confirm_selected_card_preview():
-                sleep(1)
-                skip()
-                sleep(3.5)
+                finish_card_animation()
             else:
+                if result_observer is not None:
+                    result_observer(img)
                 sleep(0.3)
             timeout_cd.reset()
             card_count = -1
@@ -372,10 +402,7 @@ def do_cards(
         else:
             if try_battle_strategy():
                 logger.info("Handle battle strategy success with %d tries", tries)
-                hand_layout_gate.reset()
-                sleep(1)
-                skip()
-                sleep(3.5)
+                finish_card_animation()
                 tries = 0
                 timeout_cd.reset()
                 continue
@@ -385,10 +412,7 @@ def do_cards(
                 img=img
             ):
                 logger.info("Handle recommended card success with %d tries", tries)
-                hand_layout_gate.reset()
-                sleep(1)
-                skip()
-                sleep(3.5)
+                finish_card_animation()
                 tries = 0
                 timeout_cd.reset()
                 continue
@@ -420,6 +444,11 @@ def do_cards(
                 break_cd.reset().start()
             if break_cd.expired():
                 logger.info("End condition met. do_cards finished.")
+                if battle_strategy is not None:
+                    try:
+                        battle_strategy.on_battle_end()
+                    except Exception:
+                        logger.exception('Could not finalize battle strategy diagnostics.')
                 break
         else:
             logger.debug('reset break_cd')
@@ -428,18 +457,96 @@ def do_cards(
 def do_skips():
     pass
 
+def _order_move_options(
+    options: list[MoveCardOption],
+    battle_strategy: AbstractBattleStrategy | None,
+) -> list[MoveCardOption]:
+    order = list(reversed(range(len(options))))
+    if battle_strategy is not None:
+        try:
+            ranked = battle_strategy.rank_move_cards([option.card for option in options])
+            if ranked is not None:
+                valid = list(dict.fromkeys(
+                    index for index in ranked if 0 <= index < len(options)
+                ))
+                order = valid + [index for index in order if index not in valid]
+        except Exception:
+            logger.exception('Could not rank move-to-hold cards; using legacy order.')
+    return [options[index] for index in order]
+
+
 @action("技能卡移动")
-def handle_skill_card_move():
+def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None) -> bool:
     """
     前置条件：技能卡移动对话框\n
     结束状态：对话框结束瞬间
     """
-    cards = AnyOf[
-        R.InProduce.A,
-        R.InProduce.M,
-        R.InProduce.T,
-    ].find_all()
-    if not cards:
+    def find_options() -> list[MoveCardOption]:
+        letters = (
+            R.InProduce.A.q(threshold=0.8, region=MOVE_CARD_AREA).find_all()
+            + R.InProduce.M.q(threshold=0.8, region=MOVE_CARD_AREA).find_all()
+            + R.InProduce.T.q(threshold=0.8, region=MOVE_CARD_AREA).find_all()
+        )
+        return recognize_move_cards(device.screenshot(), [letter.rect for letter in letters])
+
+    def scroll_to(position: float) -> bool:
+        thumb_y = find_move_scroll_thumb(device.screenshot())
+        if thumb_y is None:
+            return False
+        target_y = 550 + round(position * 495)
+        if abs(target_y - thumb_y) < 15:
+            return True
+        device.swipe(683, thumb_y, 683, target_y, duration=0.4)
+        sleep(0.5)
+        return True
+
+    def same_card(first: MoveCardOption, second: MoveCardOption) -> bool:
+        return (
+            first.card is not None
+            and second.card is not None
+            and first.card._id == second.card._id
+            and first.card.upgrade_count == second.card.upgrade_count
+        )
+
+    def choose_option() -> MoveCardOption | None:
+        options = find_options()
+        if not options:
+            return None
+        if battle_strategy is None or battle_strategy.rank_move_cards(
+            [option.card for option in options]
+        ) is None:
+            return _order_move_options(options, battle_strategy)[0]
+
+        # The source can be a scrollable draw/discard pile. Drag the actual
+        # scrollbar thumb; swiping the blank right margin does not scroll it.
+        # Sample top, middle and bottom, then return to the chosen card.
+        pooled: list[tuple[float, MoveCardOption]] = []
+        positions = (0.0, 0.5, 1.0) if find_move_scroll_thumb(device.screenshot()) is not None else (0.0,)
+        for position in positions:
+            if len(positions) > 1 and not scroll_to(position):
+                break
+            visible = find_options()
+            pooled.extend((position, option) for option in visible)
+        if not pooled:
+            return None
+        ranked = battle_strategy.rank_move_cards([option.card for _, option in pooled])
+        logger.info(
+            'Hold dialog scanned %d viewports, %d visible candidates.',
+            len(positions), len(pooled),
+        )
+        if not ranked:
+            return _order_move_options(find_options(), battle_strategy)[0]
+        target_position, target = pooled[ranked[0]]
+        if len(positions) > 1:
+            scroll_to(target_position)
+        current = find_options()
+        found = next((option for option in current if same_card(option, target)), None)
+        if found is not None:
+            return found
+        logger.warning('Top hold card was not visible after scrolling; using current best.')
+        return _order_move_options(current, battle_strategy)[0]
+
+    if not find_options():
         logger.info("No skill cards found")
         return False
 
@@ -455,18 +562,24 @@ def handle_skill_card_move():
         # 没有，要继续选择并确定
         else:
             cd.reset()
-            if not cards:
-                logger.info("No skill cards left. Retrying...")
-                cards = AnyOf[
-                    R.InProduce.A,
-                    R.InProduce.M,
-                    R.InProduce.T,
-                ].find_all()
-            card = cards.pop()
-            device.double_click(card)
+            try:
+                option = choose_option()
+            except Exception:
+                logger.exception('Could not scan hold cards; retrying visible options.')
+                options = find_options()
+                option = _order_move_options(options, battle_strategy)[0] if options else None
+            if option is None:
+                dialog.yes()
+                continue
+            logger.info(
+                'Moving card to hold: %s',
+                option.card.name if option.card is not None else 'unrecognized',
+            )
+            device.double_click(option.letter_rect)
             sleep(1)
             dialog.yes()
     logger.debug("Handle skill card move finished.")
+    return True
 
 @action('获取当前卡牌信息', screenshot_mode='manual')
 def obtain_cards(img: MatLike | None = None):

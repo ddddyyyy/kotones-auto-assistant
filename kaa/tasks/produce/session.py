@@ -29,19 +29,25 @@ class ProduceSession:
     """是否为继续培育。"""
     deck: CardDeck | None = None
     """该次培育使用的卡组。为空时表示无卡组（不使用优先级选卡）。"""
+    strategy_idol_card: str | None = None
+    """用于确定打牌流派的卡牌 ID；恢复识别的头像可与方案卡面不同。"""
 
     _card: IdolCard | None = field(default=None, init=False, repr=False)
 
     @cached_property
     def archetype(self) -> ProduceExamEffectType | None:
         if self._card is None:
-            self._card = IdolCard.from_skin_id(self.idol_card)
+            self._card = IdolCard.from_skin_id(
+                self.strategy_idol_card or self.idol_card
+            )
         return self._card.exam_effect_type if self._card else None
 
     @cached_property
     def show_archetype(self) -> ShowExamEffectType | None:
         if self._card is None:
-            self._card = IdolCard.from_skin_id(self.idol_card)
+            self._card = IdolCard.from_skin_id(
+                self.strategy_idol_card or self.idol_card
+            )
         return self._card.show_exam_effect_type if self._card else None
 
 
