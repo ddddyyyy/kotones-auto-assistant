@@ -93,6 +93,11 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
         # Stance glyphs belong to the top HUD slot. Searching the entire
         # effect stack would let a card/item glyph impersonate the stance.
         search = bright[:120, :75] if effect == 'concentration' else bright
+        if effect == 'full_power':
+            # Its purple diamond bleeds into the 188 mask. Keeping only the
+            # brighter white strokes restores the glyph without lowering the
+            # existing match threshold (real missed frames score ~0.649).
+            _, search = cv2.threshold(roi, 210, 255, cv2.THRESH_BINARY)
         source = _icon_alpha(effect)
         best_confidence = -1.0
         best_rect = (0, 0, 0, 0)

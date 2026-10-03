@@ -82,13 +82,16 @@ RESOLVING_CARD_LETTER_RECT = R.InProduce.BoxResolvingCardLetter
 
 
 def _has_resolving_card(screen: MatLike) -> bool:
-    """Detect the central played-card overlay, not the bottom hand markers."""
+    """Detect resolution or a selected-hand preview before reading new state."""
     if screen.shape[0] < 875 or screen.shape[1] < 390:
         return False
     return any(
         find_template(screen, template.template, rect=RESOLVING_CARD_LETTER_RECT, threshold=0.93) is not None
         for template in (R.InProduce.A, R.InProduce.M, R.InProduce.T)
-    )
+    ) or find_template(
+        screen, R.InProduce.TextSelectedHandPreview.template,
+        rect=R.InProduce.BoxSelectedHandPreview, threshold=0.9,
+    ) is not None
 
 
 class CardAnimationGate:
@@ -106,11 +109,11 @@ class CardAnimationGate:
         now = time.monotonic()
         if self.started is None:
             self.started = now
-            logger.debug('Waiting for central card resolution before another hand click.')
+            logger.debug('Waiting for card resolution or selected preview before another hand click.')
         if now - self.started < 8:
             return True
         if not self.warned:
-            logger.warning('Central card overlay persisted for eight seconds; releasing animation wait.')
+            logger.warning('Card resolution or selected preview persisted for eight seconds; releasing animation wait.')
             self.warned = True
         return False
 

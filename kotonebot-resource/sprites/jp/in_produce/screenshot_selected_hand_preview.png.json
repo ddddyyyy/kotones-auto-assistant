@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "definitions": {
+    "4fe658ac-986c-42bb-b11b-231c58af6509": {
+      "name": "InProduce.TextSelectedHandPreview",
+      "displayName": "手牌已选择预览标记",
+      "type": "prefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 536,
+          "y1": 1108,
+          "x2": 617,
+          "y2": 1138
+        }
+      },
+      "prefab_id": "TemplateMatchPrefab",
+      "variant_policy": {}
+    },
+    "00ca1fb3-77ab-4557-92e1-b57b7ba907ff": {
+      "name": "InProduce.BoxSelectedHandPreview",
+      "displayName": "手牌选择标记搜索区域",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 0,
+          "y1": 850,
+          "x2": 720,
+          "y2": 1170
+        }
+      }
+    }
+  }
+}
