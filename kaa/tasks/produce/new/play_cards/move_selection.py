@@ -7,13 +7,15 @@ from cv2.typing import MatLike
 from kotonebot import logging
 from kotonebot.primitives import Rect
 
+from kaa.tasks import R
+from kotonebot.backend.image import find_all
 from kaa.db.skill_card import SkillCard
 from kaa.game_ui.skill_card_select import match_card_region
 
 
 # Covers all visible modal rows; the hand behind the dialog is blurred and is
 # rejected by the stricter letter-template threshold in the caller.
-MOVE_CARD_AREA = Rect(20, 370, 680, 750)
+MOVE_CARD_AREA = R.InProduce.BoxMoveCards
 logger = logging.getLogger(__name__)
 
 
@@ -41,9 +43,10 @@ def _has_upgrade_marker(screen: MatLike, letter: Rect) -> bool:
 def find_move_scroll_thumb(screen: MatLike) -> int | None:
     """Locate the dark thumb on the move dialog's narrow right-hand track."""
     height, width = screen.shape[:2]
-    if height < 1100 or width < 690:
+    track = R.InProduce.BoxMoveScrollTrack
+    if height < track.y2 or width <= track.x1:
         return None
-    column = screen[510:1095, 683]
+    column = screen[track.y1:track.y2, track.x1]
     blue = column[:, 0].astype('int16')
     green = column[:, 1].astype('int16')
     red = column[:, 2].astype('int16')
@@ -64,7 +67,7 @@ def find_move_scroll_thumb(screen: MatLike) -> int | None:
             run_start = None
     if run_start is not None and len(thumb) - run_start > best_length:
         best_start, best_length = run_start, len(thumb) - run_start
-    return 510 + best_start + best_length // 2 if best_length >= 25 else None
+    return track.y1 + best_start + best_length // 2 if best_length >= 25 else None
 
 
 def recognize_move_cards(
@@ -105,3 +108,15 @@ def recognize_move_cards(
                 logger.exception('Could not identify a move-to-hold card.')
         options.append(MoveCardOption(letter, card))
     return options
+
+
+def observe_move_cards(screen: MatLike) -> list[MoveCardOption]:
+    """Locate letters and recognize card faces from exactly the same frame."""
+    # Modal illustrations can resemble a letter at 0.8 (a saved T false match
+    # scores 0.821); the reference's six real markers all exceed 0.92.
+    letters = [
+        match.rect
+        for template in (R.InProduce.A, R.InProduce.M, R.InProduce.T)
+        for match in find_all(screen, template.template, rect=MOVE_CARD_AREA, threshold=0.9)
+    ]
+    return recognize_move_cards(screen, letters)

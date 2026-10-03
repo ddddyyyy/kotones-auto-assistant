@@ -8,6 +8,7 @@ from functools import lru_cache
 import json
 
 from kaa.db.sqlite import select
+from kaa.db._util import register_cache_clear
 
 from .state import AnomalyStance, BattleState
 
@@ -51,6 +52,8 @@ def load_exam_trigger(trigger_id: str) -> ExamTrigger | None:
         field_status_values=_json_tuple(row['fieldStatusValues']),
     )
 
+
+register_cache_clear(load_exam_trigger.cache_clear)
 
 def evaluate_exam_trigger(trigger: ExamTrigger | None, state: BattleState) -> TriggerVerdict:
     """Return whether all currently observable field conditions are satisfied.

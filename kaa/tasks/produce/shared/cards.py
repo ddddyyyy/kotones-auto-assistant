@@ -13,10 +13,9 @@ from kaa.game_ui import dialog
 from kaa.tasks.produce.shared.common import acquisition_date_change_dialog
 from kaa.tasks.produce.new.play_cards.strategy import AbstractBattleStrategy
 from kaa.tasks.produce.new.play_cards.move_selection import (
-    MOVE_CARD_AREA,
     MoveCardOption,
     find_move_scroll_thumb,
-    recognize_move_cards,
+    observe_move_cards,
 )
 from kotonebot.primitives import RectTuple, Rect
 from kotonebot import action, Interval, Countdown, device, image, sleep, ocr, contains, use_screenshot, color
@@ -78,8 +77,8 @@ CARD_START_X_5 = 17
 CARD_DELTA_X_5 = -68
 # SKIP 按钮
 SKIP_CARD_BUTTON = CardPosInfo(621, 739, 85, 85, 10)
-SELECTED_CARD_CONFIRM_RECT = Rect(300, 1105, 120, 60)
-RESOLVING_CARD_LETTER_RECT = Rect(330, 780, 60, 95)
+SELECTED_CARD_CONFIRM_RECT = R.InProduce.BoxSelectedCardConfirm
+RESOLVING_CARD_LETTER_RECT = R.InProduce.BoxResolvingCardLetter
 
 
 def _has_resolving_card(screen: MatLike) -> bool:
@@ -276,12 +275,12 @@ def do_cards(
         hand_layout_gate.reset()
         _finish_card_animation(result_observer)
 
-    def try_battle_strategy() -> bool:
+    def try_battle_strategy(screen: MatLike) -> bool:
         if battle_strategy is None:
             return False
         try:
             from kaa.tasks.produce.new.play_cards.page import LessonBattleContext
-            ctx = LessonBattleContext()
+            ctx = LessonBattleContext(screen)
             handled = battle_strategy.on_action(ctx)
             if not handled:
                 return False
@@ -400,7 +399,7 @@ def do_cards(
                     device.click(SKIP_POSITION)
                     continue
         else:
-            if try_battle_strategy():
+            if try_battle_strategy(img):
                 logger.info("Handle battle strategy success with %d tries", tries)
                 finish_card_animation()
                 tries = 0
@@ -482,21 +481,17 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
     结束状态：对话框结束瞬间
     """
     def find_options() -> list[MoveCardOption]:
-        letters = (
-            R.InProduce.A.q(threshold=0.8, region=MOVE_CARD_AREA).find_all()
-            + R.InProduce.M.q(threshold=0.8, region=MOVE_CARD_AREA).find_all()
-            + R.InProduce.T.q(threshold=0.8, region=MOVE_CARD_AREA).find_all()
-        )
-        return recognize_move_cards(device.screenshot(), [letter.rect for letter in letters])
+        return observe_move_cards(device.screenshot())
 
     def scroll_to(position: float) -> bool:
         thumb_y = find_move_scroll_thumb(device.screenshot())
         if thumb_y is None:
             return False
-        target_y = 550 + round(position * 495)
+        travel = R.InProduce.BoxMoveScrollTravel
+        target_y = travel.y1 + round(position * travel.h)
         if abs(target_y - thumb_y) < 15:
             return True
-        device.swipe(683, thumb_y, 683, target_y, duration=0.4)
+        device.swipe(travel.x1, thumb_y, travel.x1, target_y, duration=0.4)
         sleep(0.5)
         return True
 
@@ -535,7 +530,8 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
             len(positions), len(pooled),
         )
         if not ranked:
-            return _order_move_options(find_options(), battle_strategy)[0]
+            options = _order_move_options(find_options(), battle_strategy)
+            return next(iter(options), None)
         target_position, target = pooled[ranked[0]]
         if len(positions) > 1:
             scroll_to(target_position)
@@ -544,7 +540,7 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
         if found is not None:
             return found
         logger.warning('Top hold card was not visible after scrolling; using current best.')
-        return _order_move_options(current, battle_strategy)[0]
+        return next(iter(_order_move_options(current, battle_strategy)), None)
 
     if not find_options():
         logger.info("No skill cards found")
@@ -569,7 +565,7 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
                 options = find_options()
                 option = _order_move_options(options, battle_strategy)[0] if options else None
             if option is None:
-                dialog.yes()
+                sleep(0.2)
                 continue
             logger.info(
                 'Moving card to hold: %s',

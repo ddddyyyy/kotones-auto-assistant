@@ -31,6 +31,45 @@
           "y2": 1195
         }
       }
+    },
+    "ae332584-a04c-510a-8303-0a4262ef50d1": {
+      "type": "hint-box",
+      "name": "InProduce.BoxMoveCards",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 20,
+          "y1": 370,
+          "x2": 700,
+          "y2": 1120
+        }
+      }
+    },
+    "6dff199c-d554-5c10-80db-ee709d24a5b3": {
+      "type": "hint-box",
+      "name": "InProduce.BoxMoveScrollTrack",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 683,
+          "y1": 510,
+          "x2": 684,
+          "y2": 1095
+        }
+      }
+    },
+    "4a80e59e-86ec-5633-b620-7d2893b6967d": {
+      "type": "hint-box",
+      "name": "InProduce.BoxMoveScrollTravel",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 683,
+          "y1": 550,
+          "x2": 684,
+          "y2": 1045
+        }
+      }
     }
   }
 }

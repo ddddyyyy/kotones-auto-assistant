@@ -1,6 +1,6 @@
 import re
-from typing import Any, NamedTuple
-from functools import lru_cache
+from typing import Any, NamedTuple, Callable, TypeVar, cast, TYPE_CHECKING
+from functools import lru_cache, wraps
 from typing_extensions import deprecated
 
 import cv2
@@ -12,19 +12,33 @@ from kotonebot import logging, device, Loop, Countdown
 
 from kaa.tasks import R
 from .ui import CardGameObject, locate_cards
-from kaa.tasks.produce.new.page import eval_once
+
+if TYPE_CHECKING:
+    from .planner.hud_effects import EffectIconObservation
+
+_Result = TypeVar('_Result')
+
+
+def _observe_once(func: Callable[['LessonBattleContext'], _Result]) -> Callable[['LessonBattleContext'], _Result]:
+    """Cache on the observation owner, never on a process-wide closure."""
+    @wraps(func)
+    def read(context: 'LessonBattleContext') -> _Result:
+        if func not in context._observations:
+            context._observations[func] = func(context)
+        return cast(_Result, context._observations[func])
+    return read
 
 logger = logging.getLogger(__name__)
 HUD_HEIGHT = 226
 # The center target can be three digits (for example 256). The old 60-pixel
 # crop cut off edge digits and read 90 as 9 or 256 as 5.
-BOX_SCORE_GAP = Rect(280, 120, 160, 70)
-BOX_REMAINING_TURNS_LEFT = Rect(25, 69, 80, 44)
+BOX_SCORE_GAP = R.InProduce.InLesson.BoxScoreGap
+BOX_REMAINING_TURNS_LEFT = R.InProduce.InLesson.BoxRemainingTurnsLeft
 # Ranked exams show the standings above the resource gauges, shifting both
 # badges down by roughly 40 px compared with lessons.
-BOX_EXAM_HP = Rect(565, 208, 63, 41)
-BOX_EXAM_GENKI = Rect(635, 171, 54, 40)
-BOX_EXAM_LEADER_SCORE = Rect(214, 125, 83, 40)
+BOX_EXAM_HP = R.InProduce.InExam.BoxHp
+BOX_EXAM_GENKI = R.InProduce.InExam.BoxGenki
+BOX_EXAM_LEADER_SCORE = R.InProduce.InExam.BoxLeaderScore
 
 
 class ExamStandings(NamedTuple):
@@ -37,9 +51,10 @@ def _own_exam_score_box(screen: MatLike) -> Rect | None:
     """Find the uniquely wide white frame around the player's standings tile."""
     if screen.shape[0] < 204 or screen.shape[1] < 715:
         return None
-    region = screen[48:204, 205:715]
+    box = R.InProduce.InExam.BoxStandingsFrames
+    region = screen[box.y1:box.y2, box.x1:box.x2]
     bright_columns = (region.min(axis=2) > 210).sum(axis=0)
-    marked = [205 + index for index, count in enumerate(bright_columns) if count >= 90]
+    marked = [box.x1 + index for index, count in enumerate(bright_columns) if count >= 90]
     runs: list[tuple[int, int]] = []
     for x in marked:
         if runs and x == runs[-1][1] + 1:
@@ -225,9 +240,10 @@ def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
 
 def _fetch_int(
     box: Rect, *, fallback_raw: bool = False, verify_hp: bool = False,
-    verify_genki: bool = False,
+    verify_genki: bool = False, screen: MatLike | None = None,
 ) -> int | None:
-    screen = device.screenshot()
+    if screen is None:
+        screen = device.screenshot()
     crop = screen[box.y1:box.y2, box.x1:box.x2]
     nums = _digits_from_image(crop, fallback_raw=fallback_raw)
     if not nums:
@@ -239,14 +255,15 @@ def _fetch_int(
     return nums[0]
 
 
-def _fetch_remaining_turns() -> int | None:
+def _fetch_remaining_turns(screen: MatLike | None = None) -> int | None:
     """Read both sides of the turn badge to avoid losing a leading digit.
 
     The original box can cut off the tens digit in the newer battle HUD.  The
     supplementary box ends before the adjacent score, which otherwise can be
     mistaken for part of the turn count.
     """
-    screen = device.screenshot()
+    if screen is None:
+        screen = device.screenshot()
     candidates: list[int] = []
     for box in (R.InProduce.InLesson.BoxRemainingTurns, BOX_REMAINING_TURNS_LEFT):
         crop = screen[box.y1:box.y2, box.x1:box.x2]
@@ -255,12 +272,14 @@ def _fetch_remaining_turns() -> int | None:
             candidates.append(nums[0])
     return max(candidates, default=None)
 
-def _fetch_exam_remaining_turns() -> int | None:
+def _fetch_exam_remaining_turns(screen: MatLike | None = None) -> int | None:
     """Read the ranked badge without its adjacent parameter percentage."""
-    screen = device.screenshot()
+    if screen is None:
+        screen = device.screenshot()
     # Ranked numbers are centered near x=62; the lesson badge is farther right.
     # White digits isolate them from the colored ring and neighboring percent.
-    crop = screen[65:115, 12:112]
+    box = R.InProduce.InExam.BoxRemainingTurns
+    crop = screen[box.y1:box.y2, box.x1:box.x2]
     if crop.size == 0:
         return None
     mask = (crop.min(axis=2) > 200).astype('uint8') * 255
@@ -294,78 +313,88 @@ def _screenshot_hud() -> MatLike:
     return hud
 
 class LessonBattleContext:
-    """课程打牌页面"""
+    """One immutable decision input; input execution remains in commit()."""
 
-    @eval_once
+    def __init__(self, screen: MatLike | None = None):
+        self._screen = screen
+        self._observations: dict[Callable[..., Any], Any] = {}
+
+    @_observe_once
     def fetch_remaining_turns(self) -> int | None:
         """获取剩余回合数"""
-        return _fetch_remaining_turns()
+        return _fetch_remaining_turns(self.fetch_screen())
     
-    @eval_once
+    @_observe_once
     def fetch_exam_remaining_turns(self) -> int | None:
         """Read the ranked exam's distinct circular turn badge."""
-        return _fetch_exam_remaining_turns()
+        return _fetch_exam_remaining_turns(self.fetch_screen())
 
-    @eval_once
+    @_observe_once
     def fetch_hp(self) -> int | None:
         """获取当前体力"""
-        return _fetch_int(R.InProduce.InLesson.BoxHp, verify_hp=True)
+        return _fetch_int(R.InProduce.InLesson.BoxHp, verify_hp=True, screen=self.fetch_screen())
     
-    @eval_once
+    @_observe_once
     def fetch_stamina(self) -> int | None:
         """获取当前元气值"""
-        return _fetch_int(R.InProduce.InLesson.BoxGenki, fallback_raw=True, verify_genki=True)
+        return _fetch_int(R.InProduce.InLesson.BoxGenki, fallback_raw=True, verify_genki=True, screen=self.fetch_screen())
 
-    @eval_once
+    @_observe_once
     def fetch_exam_hp(self) -> int | None:
         """Read HP from the lower resource gauge in ranked exams."""
-        return _fetch_int(BOX_EXAM_HP, verify_hp=True)
+        return _fetch_int(BOX_EXAM_HP, verify_hp=True, screen=self.fetch_screen())
 
-    @eval_once
+    @_observe_once
     def fetch_exam_stamina(self) -> int | None:
         """Read genki from the lower resource gauge in ranked exams."""
-        return _fetch_int(BOX_EXAM_GENKI, fallback_raw=True, verify_genki=True)
+        return _fetch_int(BOX_EXAM_GENKI, fallback_raw=True, verify_genki=True, screen=self.fetch_screen())
 
-    @eval_once
+    @_observe_once
     def fetch_exam_standings(self) -> ExamStandings | None:
-        return read_exam_standings(device.screenshot())
+        return read_exam_standings(self.fetch_screen())
 
-    @eval_once
+    @_observe_once
     def fetch_score_gap(self) -> int | None:
         """获取距离课程 CLEAR/PERFECT 目标还差的参数值。
 
         考试界面没有中央目标圆环，此时 OCR 会自然返回 ``None``。
         """
-        return _fetch_int(BOX_SCORE_GAP)
+        return _fetch_int(BOX_SCORE_GAP, screen=self.fetch_screen())
 
-    @eval_once
+    @_observe_once
     def fetch_score_target_is_final(self) -> bool | None:
         """Distinguish the intermediate CLEAR goal from the final PERFECT goal."""
-        if R.InProduce.TextPerfectUntil.exists():
+        if find(self.fetch_screen(), R.InProduce.TextPerfectUntil.template) is not None:
             return True
-        if R.InProduce.TextClearUntil.exists():
+        if find(self.fetch_screen(), R.InProduce.TextClearUntil.template) is not None:
             return False
         return None
     
-    @eval_once
+    @_observe_once
     def fetch_all(self):
-        remaining_turns = _fetch_remaining_turns()
-        hp = _fetch_int(R.InProduce.InLesson.BoxHp, verify_hp=True)
-        genki = _fetch_int(R.InProduce.InLesson.BoxGenki, fallback_raw=True, verify_genki=True)
-        score_gap = _fetch_int(BOX_SCORE_GAP)
-        return HudInfo(remaining_turns, hp, genki, score_gap)
-    
-    @eval_once
+        return HudInfo(
+            self.fetch_remaining_turns(), self.fetch_hp(),
+            self.fetch_stamina(), self.fetch_score_gap(),
+        )
+
+    @_observe_once
     def fetch_hands(self):
         """获取手牌信息"""
-        img = device.screenshot()
-        cards = locate_cards(img)
+        cards = locate_cards(self.fetch_screen())
         return cards
 
-    @eval_once
+    @_observe_once
     def fetch_screen(self) -> MatLike:
-        """Capture the current battle HUD for planner-only observations."""
-        return device.screenshot()
+        """Share one frame across hand, HUD, target and feedback parsing."""
+        if self._screen is None:
+            self._screen = device.screenshot()
+        return self._screen
+
+    @_observe_once
+    def fetch_effect_observations(self) -> list['EffectIconObservation']:
+        """Parse visible effects here; the planner consumes observations."""
+        from .planner.hud_effects import observe_effect_icons
+        return observe_effect_icons(self.fetch_screen())
 
     def commit(self, card: CardGameObject):
         card.double_click()

@@ -106,12 +106,12 @@ def test_genki_zero_uses_raw_crop_when_binary_ocr_misses_it():
 def test_stamina_reading_enables_raw_fallback_without_changing_hp(monkeypatch):
     calls: list[tuple[object, bool, bool]] = []
 
-    def fake_fetch(box, *, fallback_raw=False, verify_hp=False, verify_genki=False):
+    def fake_fetch(box, *, fallback_raw=False, verify_hp=False, verify_genki=False, screen=None):
         calls.append((box, fallback_raw, verify_genki))
         return 0
 
     monkeypatch.setattr(page, '_fetch_int', fake_fetch)
-    context = page.LessonBattleContext()
+    context = page.LessonBattleContext(np.zeros((1280, 720, 3), dtype=np.uint8))
 
     assert context.fetch_stamina() == 0
     assert context.fetch_hp() == 0

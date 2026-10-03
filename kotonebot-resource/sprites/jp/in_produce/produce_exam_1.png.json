@@ -161,6 +161,71 @@
           "y2": 809
         }
       }
+    },
+    "8be08d3c-5d1e-5284-94db-71315f9af0f6": {
+      "type": "hint-box",
+      "name": "InProduce.InExam.BoxHp",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 565,
+          "y1": 208,
+          "x2": 628,
+          "y2": 249
+        }
+      }
+    },
+    "d4bcffee-5fd9-595b-8074-0b58b2bc62c8": {
+      "type": "hint-box",
+      "name": "InProduce.InExam.BoxGenki",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 635,
+          "y1": 171,
+          "x2": 689,
+          "y2": 211
+        }
+      }
+    },
+    "31bc452a-1b2b-5b90-96c8-af81af285662": {
+      "type": "hint-box",
+      "name": "InProduce.InExam.BoxLeaderScore",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 214,
+          "y1": 125,
+          "x2": 297,
+          "y2": 165
+        }
+      }
+    },
+    "ba31d6f8-0faa-5727-8157-6c6fce201469": {
+      "type": "hint-box",
+      "name": "InProduce.InExam.BoxRemainingTurns",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 12,
+          "y1": 65,
+          "x2": 112,
+          "y2": 115
+        }
+      }
+    },
+    "150ef0ba-301e-5fa0-beeb-a223698f7305": {
+      "type": "hint-box",
+      "name": "InProduce.InExam.BoxStandingsFrames",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 205,
+          "y1": 48,
+          "x2": 715,
+          "y2": 204
+        }
+      }
     }
   }
 }

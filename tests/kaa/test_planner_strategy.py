@@ -615,13 +615,8 @@ def test_lesson_passes_perfect_target_stage_to_evaluator(monkeypatch, caplog):
 
 def test_planner_reconciles_numeric_hud_effect_observations(monkeypatch):
     monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
-    monkeypatch.setattr(
-        strategy_module,
-        'observe_effect_icons',
-        lambda _screen: [SimpleNamespace(effect='lesson_buff', value=10)],
-    )
     ctx = FakeContext([_hand('card')])
-    setattr(ctx, 'fetch_screen', lambda: object())
+    setattr(ctx, 'fetch_effect_observations', lambda: [SimpleNamespace(effect='lesson_buff', value=10)])
     strategy = PlannerStrategy(FakeEvaluator({'card': 1}))
 
     state = strategy._build_observed_state(cast(Any, ctx), cast(Any, ctx.hands))
@@ -632,9 +627,8 @@ def test_planner_reconciles_numeric_hud_effect_observations(monkeypatch):
 
 def test_planner_requires_repeated_hud_absence_before_confirming_zero(monkeypatch):
     monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
-    monkeypatch.setattr(strategy_module, 'observe_effect_icons', lambda _screen: [])
     ctx = FakeContext([_hand('card')])
-    setattr(ctx, 'fetch_screen', lambda: object())
+    setattr(ctx, 'fetch_effect_observations', lambda: [])
     strategy = PlannerStrategy(FakeEvaluator({'card': 1}))
 
     first = strategy._build_observed_state(cast(Any, ctx), cast(Any, ctx.hands))

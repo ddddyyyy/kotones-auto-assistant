@@ -21,7 +21,6 @@ from .evaluator import (
 )
 from .feedback import PendingPlay, PlayFeedback, PlayFeedbackStatus, evaluate_play_feedback
 from .decision_trace import DecisionTrace
-from .hud_effects import observe_effect_icons
 from .memory import BattleMemory
 from .play_evidence import PlayFeedbackEvidence
 from .profiles import profile_for
@@ -592,15 +591,14 @@ class PlannerStrategy(AbstractBattleStrategy):
                 else 'unknown'
             )
             logger.debug('Planner lesson target: %s, remaining score: %s', target_stage, score_gap)
-        fetch_screen = getattr(ctx, 'fetch_screen', None)
-        screen = fetch_screen() if fetch_screen is not None else None
-        observations = observe_effect_icons(screen) if screen is not None else []
-        observed_effects = frozenset(item.effect for item in observations)
+        fetch_effects = getattr(ctx, 'fetch_effect_observations', None)
+        observations = fetch_effects() if fetch_effects is not None else None
+        observed_effects = frozenset(item.effect for item in (observations or []))
         observed_values = {
             item.effect: item.value
-            for item in observations
+            for item in (observations or [])
         }
-        if screen is not None:
+        if observations is not None:
             self._memory.reconcile_effect_values(observed_values)
         if observations:
             logger.debug(
@@ -609,7 +607,7 @@ class PlannerStrategy(AbstractBattleStrategy):
                     f'{item.effect}={item.value}'
                     if item.value is not None
                     else item.effect
-                    for item in observations
+                    for item in (observations or [])
                 ],
             )
         fetch_hp = (

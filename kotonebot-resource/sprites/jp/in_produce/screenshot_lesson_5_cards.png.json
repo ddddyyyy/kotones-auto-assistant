@@ -71,6 +71,58 @@
           "y2": 116
         }
       }
+    },
+    "9ebb427e-d201-5d0c-9777-fe696b93f7de": {
+      "type": "hint-box",
+      "name": "InProduce.InLesson.BoxScoreGap",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 280,
+          "y1": 120,
+          "x2": 440,
+          "y2": 190
+        }
+      }
+    },
+    "08a51df9-dd68-5b0b-b17f-c66587131363": {
+      "type": "hint-box",
+      "name": "InProduce.InLesson.BoxRemainingTurnsLeft",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 25,
+          "y1": 69,
+          "x2": 105,
+          "y2": 113
+        }
+      }
+    },
+    "e041a1b4-0864-5cc6-98cd-e2713447fbc5": {
+      "type": "hint-box",
+      "name": "InProduce.BoxSelectedCardConfirm",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 300,
+          "y1": 1105,
+          "x2": 420,
+          "y2": 1165
+        }
+      }
+    },
+    "b43e0f71-c0ad-5c1f-be6c-2655a0805482": {
+      "type": "hint-box",
+      "name": "InProduce.BoxResolvingCardLetter",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 330,
+          "y1": 780,
+          "x2": 390,
+          "y2": 875
+        }
+      }
     }
   }
 }

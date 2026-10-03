@@ -184,3 +184,34 @@ def test_remaining_turn_condition_is_unknown_when_hud_is_missing():
     state = BattleState(remaining_turns=1, hp=10, genki=0, remaining_turns_known=False)
     trigger = _trigger('ProduceExamFieldStatusType_RemainingTurn', 2)
     assert evaluate_exam_trigger(trigger, state) == TriggerVerdict.UNKNOWN
+
+
+def test_database_update_invalidates_existing_and_missing_triggers(monkeypatch):
+    from kaa.db import _util
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+
+    rows = {'changed': {'phaseTypes': '["old"]'}}
+    calls = []
+
+    def select(sql, key):
+        calls.append(key)
+        row = rows.get(key)
+        if row is None:
+            return None
+        return {'phaseTypes': row['phaseTypes'], 'fieldStatusCheckTypes': '[]',
+                'fieldStatusTypes': '[]', 'fieldStatusValues': '[]'}
+
+    monkeypatch.setattr(trigger, 'select', select)
+    monkeypatch.setattr(_util, 'invalidate_connections', lambda: None)
+    trigger.load_exam_trigger.cache_clear()
+    try:
+        assert trigger.load_exam_trigger('changed').phase_types == ('old',)
+        assert trigger.load_exam_trigger('missing') is None
+        rows['changed'] = {'phaseTypes': '["new"]'}
+        rows['missing'] = {'phaseTypes': '["added"]'}
+        _util.clear_db_caches()
+        assert trigger.load_exam_trigger('changed').phase_types == ('new',)
+        assert trigger.load_exam_trigger('missing').phase_types == ('added',)
+        assert calls == ['changed', 'missing', 'changed', 'missing']
+    finally:
+        trigger.load_exam_trigger.cache_clear()
