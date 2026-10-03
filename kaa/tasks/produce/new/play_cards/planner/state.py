@@ -121,6 +121,21 @@ class BattleState:
     observed_effect_values: tuple[tuple[str, int | None], ...] = ()
     """Raw HUD values; inferred buffs must not confirm their own speculative play."""
 
+    projected_effect_values: tuple[tuple[str, int | None], ...] | None = None
+    """Trusted numeric balances propagated by lookahead, never HUD evidence.
+
+    None denotes an observation state; an empty tuple denotes a simulation
+    with no trusted numeric balances. Raw observed_effect_values stay intact.
+    """
+
+    @property
+    def effect_values_for_planning(self) -> tuple[tuple[str, int | None], ...]:
+        return (
+            self.observed_effect_values
+            if self.projected_effect_values is None
+            else self.projected_effect_values
+        )
+
     def __post_init__(self) -> None:
         if self.remaining_turns < 0:
             raise ValueError('remaining_turns must be non-negative')

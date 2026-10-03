@@ -48,7 +48,7 @@ def special_cost_affordability(state: BattleState, card: SkillCard) -> bool | No
     effect = SPECIAL_COST_EFFECTS.get(kind or '')
     if effect is None:
         return None
-    observed = dict(state.observed_effect_values).get(effect)
+    observed = dict(state.effect_values_for_planning).get(effect)
     balances = special_resource_balances(state)
     # A raw OCR value still awaiting reconciliation is not a trusted balance.
     if observed is None or observed != balances[effect]:

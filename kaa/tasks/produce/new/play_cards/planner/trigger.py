@@ -152,7 +152,7 @@ def _evaluate_field_status(
         observed_name = observed_names.get(status_type)
         if observed_name == 'genki':
             return state.genki >= threshold if state.genki_known else None
-        observed = dict(state.observed_effect_values).get(observed_name or '')
+        observed = dict(state.effect_values_for_planning).get(observed_name or '')
         if observed is not None:
             # A reconciled numeric observation resolves both sides of a
             # threshold, including zero. A conflicting raw reading proves

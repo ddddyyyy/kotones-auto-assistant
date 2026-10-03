@@ -33,7 +33,8 @@ def test_special_payment_is_consumed_before_a_second_card(cost_type, effect, buf
                         observed_effect_values=((effect, 4),))
     assert can_afford_play(state, first) is True
     after = simulate_play(state, first)
-    assert dict(after.observed_effect_values)[effect] == 1
+    assert after.observed_effect_values == state.observed_effect_values
+    assert dict(after.projected_effect_values)[effect] == 1
     assert can_afford_play(after, first) is False
 
 
@@ -81,3 +82,44 @@ def test_evaluation_penalty_and_simulation_use_the_same_integer_cost(stance, ful
     after = simulate_play(state, paid)
     assert after.genki == 20 - green
     assert after.hp == 30 - red
+
+
+def test_repeated_lookahead_keeps_raw_hud_and_uses_current_projected_balance():
+    from kaa.tasks.produce.new.play_cards.planner.trigger import (
+        ExamTrigger, TriggerVerdict, evaluate_exam_trigger,
+    )
+    payment = card('ExamCostType_ExamFullPowerPoint', 3)
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+                        anomaly=AnomalyState(full_power_points=10),
+                        observed_effect_values=(('full_power_point', 10),))
+    once = simulate_play(state, payment)
+    twice = simulate_play(once, payment)
+    assert state.projected_effect_values is None
+    assert once.observed_effect_values == twice.observed_effect_values == state.observed_effect_values
+    assert dict(once.projected_effect_values)['full_power_point'] == 7
+    assert dict(twice.projected_effect_values)['full_power_point'] == 4
+    assert can_afford_play(twice, card('ExamCostType_ExamFullPowerPoint', 5)) is False
+    condition = ExamTrigger(field_status_types=('ProduceExamFieldStatusType_FullPowerPointUp',),
+                            field_status_values=(5,))
+    assert evaluate_exam_trigger(condition, once) == TriggerVerdict.ACTIVE
+    assert evaluate_exam_trigger(condition, twice) == TriggerVerdict.INACTIVE
+
+
+@pytest.mark.parametrize('raw', [None, 0, 8])
+def test_projection_does_not_promote_missing_or_conflicting_hud(raw):
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+                        anomaly=AnomalyState(full_power_points=5),
+                        observed_effect_values=(('full_power_point', raw),))
+    after = simulate_play(state, card('ExamCostType_ExamFullPowerPoint', 3))
+    assert after.observed_effect_values == state.observed_effect_values
+    assert dict(after.projected_effect_values)['full_power_point'] is None
+    assert can_afford_play(after, card('ExamCostType_ExamFullPowerPoint', 1)) is None
+
+
+def test_empty_projection_is_not_replaced_with_old_raw_values():
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+                        anomaly=AnomalyState(full_power_points=5),
+                        observed_effect_values=(('full_power_point', 5),),
+                        projected_effect_values=())
+    assert state.effect_values_for_planning == ()
+    assert can_afford_play(state, card('ExamCostType_ExamFullPowerPoint', 1)) is None

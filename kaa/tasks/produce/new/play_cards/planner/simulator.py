@@ -75,7 +75,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         elif effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
             hp += value
 
-    observed_values = dict(state.observed_effect_values)
+    projected_values = dict(state.effect_values_for_planning)
     balances = {
         'full_power_point': memory.anomaly.full_power_points,
         'lesson_buff': memory.buffs.lesson_buff,
@@ -86,10 +86,10 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     }
     before_balances = special_resource_balances(state)
     for effect in SPECIAL_COST_EFFECTS.values():
-        if observed_values.get(effect) is not None:
-            observed_values[effect] = (
+        if projected_values.get(effect) is not None:
+            projected_values[effect] = (
                 balances[effect]
-                if observed_values[effect] == before_balances[effect]
+                if projected_values[effect] == before_balances[effect]
                 else None
             )
 
@@ -111,5 +111,5 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         ),
         anomaly=memory.anomaly,
         buffs=memory.buffs,
-        observed_effect_values=tuple(observed_values.items()),
+        projected_effect_values=tuple(projected_values.items()),
     )
