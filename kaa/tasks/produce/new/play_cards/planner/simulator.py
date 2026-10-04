@@ -9,7 +9,8 @@ from kaa.db.constants import ProduceExamEffectType
 from kaa.db.skill_card import SkillCard
 
 from .costs import (
-    SPECIAL_COST_EFFECTS, play_cost, projected_cost_supported, projected_growth_output, special_cost_affordability,
+    SPECIAL_COST_EFFECTS, play_cost, projected_cost_supported, projected_growth_output,
+    projected_growth_payment, special_cost_affordability,
     special_resource_balances,
 )
 from .memory import BattleMemory
@@ -120,6 +121,10 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     }
     growth = list(state.projected_card_growth)
     uncertain_balances = growth_uncertain_balances
+    if not projected_growth_payment(state, card)[2]:
+        # Unknown growth may change a special fee or replace its type. Paying
+        # the DB base amount does not establish the next card's resource budget.
+        uncertain_balances.update(SPECIAL_COST_EFFECTS.values())
     resource_effects = {
         ProduceExamEffectType.ExamLessonBuff: 'lesson_buff',
         ProduceExamEffectType.ExamLessonBuffReduce: 'lesson_buff',

@@ -385,7 +385,7 @@ def test_inactive_resource_effect_does_not_invalidate_known_balance(monkeypatch)
     from kaa.tasks.produce.new.play_cards.planner import memory
     monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.INACTIVE)
     monkeypatch.setattr(memory, 'evaluate_trigger_id', lambda *_: TriggerVerdict.INACTIVE)
-    state = replace(_state(hp=100), projected_effect_values=(('review', 0),))
+    state = replace(_state(hp=100, growth=()), projected_effect_values=(('review', 0),))
     after = simulate_play(state, _card(green=0, effects=(_output(ProduceExamEffectType.ExamReview, 3),)))
     assert dict(after.effect_values_for_planning)['review'] == 0
 
@@ -416,3 +416,45 @@ def test_intrinsic_enchant_diagnostic_does_not_invent_remaining_count(monkeypatc
     assert metadata is not None
     assert metadata['definition']['trigger_count'] == 2
     assert metadata['remaining_trigger_count'] is None
+
+
+@pytest.mark.parametrize('resource,cost_type,field', [
+    ('review', 'ExamCostType_ExamReview', 'review'),
+    ('lesson_buff', 'ExamCostType_ExamLessonBuff', 'lesson_buff'),
+    ('aggressive', 'ExamCostType_ExamCardPlayAggressive', 'aggressive'),
+    ('parameter_buff', 'ExamCostType_ExamParameterBuff', 'parameter_buff_turns'),
+    ('parameter_buff_multiple', 'ExamCostType_ExamParameterBuffMultiplePerTurn', 'parameter_buff_multiple_turns'),
+    ('full_power_point', 'ExamCostType_ExamFullPowerPoint', None),
+])
+def test_unknown_intrinsic_fee_cannot_certify_followup_special_budget(monkeypatch, resource, cost_type, field):
+    from kaa.db import card_status_enchant as db
+    from kaa.tasks.produce.new.play_cards.planner.state import AnomalyState, ExamBuffState
+    monkeypatch.setattr(db, 'get_card_status_enchant', lambda key: SimpleNamespace(
+        cost_changed=True, output_changed=False))
+    state = replace(_state(hp=100, growth=()),
+        anomaly=AnomalyState(full_power_points=5) if field is None else AnomalyState(),
+        buffs=ExamBuffState(**{field: 5}) if field else ExamBuffState(),
+        observed_effect_values=((resource, 5),), projected_effect_values=((resource, 5),))
+    first = _card(green=0)
+    first._produce_card_status_enchant_id = 'enchant'
+    first.cost_type, first.cost_value = cost_type, 2
+    after = simulate_play(state, first)
+    assert costs.special_resource_balances(after)[resource] == 3
+    assert dict(after.effect_values_for_planning)[resource] is None
+    assert dict(after.observed_effect_values)[resource] == 5
+    follow = _card(green=0)
+    follow.cost_type, follow.cost_value = cost_type, 3
+    assert can_afford_play(after, follow) is None
+    known = _card(green=0)
+    known.cost_type, known.cost_value = cost_type, 2
+    known_after = simulate_play(state, known)
+    assert dict(known_after.effect_values_for_planning)[resource] == 3
+    assert can_afford_play(known_after, follow) is True
+
+
+def test_unknown_growth_fee_cannot_certify_original_zero_special_cost(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: CardGrowthRule(target_known=True, costs_known=False))
+    state = replace(_state(hp=100), buffs=ExamBuffState(review=5), projected_effect_values=(('review', 5),))
+    after = simulate_play(state, _card(green=0))
+    assert after.buffs.review == 5 and dict(after.effect_values_for_planning)['review'] is None
