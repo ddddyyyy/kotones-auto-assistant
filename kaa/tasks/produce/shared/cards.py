@@ -77,8 +77,22 @@ CARD_START_X_5 = 17
 CARD_DELTA_X_5 = -68
 # SKIP 按钮
 SKIP_CARD_BUTTON = CardPosInfo(621, 739, 85, 85, 10)
-SELECTED_CARD_CONFIRM_RECT = R.InProduce.BoxSelectedCardConfirm
 RESOLVING_CARD_LETTER_RECT = R.InProduce.BoxResolvingCardLetter
+
+
+def _selected_card_preview_rect(screen: MatLike) -> Rect | None:
+    """Locate the SELECT label on any hand card in this observation."""
+    for template in (
+        R.InProduce.TextSelectedHandPreview,
+        R.InProduce.TextSelectedHandPreviewTransition,
+    ):
+        match = find_template(
+            screen, template.template,
+            rect=R.InProduce.BoxSelectedHandPreview, threshold=0.9,
+        )
+        if match is not None:
+            return match.rect
+    return None
 
 
 def _has_resolving_card(screen: MatLike) -> bool:
@@ -88,10 +102,7 @@ def _has_resolving_card(screen: MatLike) -> bool:
     return any(
         find_template(screen, template.template, rect=RESOLVING_CARD_LETTER_RECT, threshold=0.93) is not None
         for template in (R.InProduce.A, R.InProduce.M, R.InProduce.T)
-    ) or find_template(
-        screen, R.InProduce.TextSelectedHandPreview.template,
-        rect=R.InProduce.BoxSelectedHandPreview, threshold=0.9,
-    ) is not None
+    ) or _selected_card_preview_rect(screen) is not None
 
 
 class CardAnimationGate:
@@ -169,11 +180,12 @@ class HandLayoutGate:
         return True
 
 
-def _confirm_selected_card_preview() -> bool:
-    """Finish a card left in the selected preview state instead of waiting forever."""
-    if ocr.find(contains('SELECT'), rect=SELECTED_CARD_CONFIRM_RECT) is None:
+def _confirm_selected_card_preview(screen: MatLike) -> bool:
+    """Confirm the observed SELECT label without switching to another hand card."""
+    rect = _selected_card_preview_rect(screen)
+    if rect is None:
         return False
-    device.click(SELECTED_CARD_CONFIRM_RECT)
+    device.click(rect)
     logger.info('Confirmed selected skill card preview.')
     return True
 
@@ -363,7 +375,7 @@ def do_cards(
         # hand card. This sits before both planner and recommendation paths.
         if animation_gate.should_wait(img):
             hand_layout_gate.reset()
-            if _confirm_selected_card_preview():
+            if _confirm_selected_card_preview(img):
                 finish_card_animation()
             else:
                 if result_observer is not None:
@@ -390,7 +402,7 @@ def do_cards(
             no_card_cd.start()
             if no_card_cd.expired():
                 no_card_cd.reset()
-                if _confirm_selected_card_preview():
+                if _confirm_selected_card_preview(img):
                     card_count = -1
                     timeout_cd.reset()
                     continue

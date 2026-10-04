@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "definitions": {
+    "c05fc21d-9ea1-47f8-8917-a941c53df86f": {
+      "name": "InProduce.TextSelectedHandPreviewTransition",
+      "displayName": "手牌选择预览标记过渡帧",
+      "type": "prefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 316,
+          "y1": 1119,
+          "x2": 402,
+          "y2": 1140
+        }
+      },
+      "prefab_id": "TemplateMatchPrefab",
+      "variant_policy": {}
+    }
+  }
+}

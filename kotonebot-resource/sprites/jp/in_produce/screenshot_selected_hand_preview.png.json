@@ -8,10 +8,10 @@
       "props": {
         "template": {
           "kind": "image",
-          "x1": 536,
-          "y1": 1108,
-          "x2": 617,
-          "y2": 1138
+          "x1": 563,
+          "y1": 1109,
+          "x2": 649,
+          "y2": 1130
         }
       },
       "prefab_id": "TemplateMatchPrefab",
