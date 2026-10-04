@@ -80,6 +80,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         ProduceExamEffectType.ExamBlockRestriction: 'genki_gain',
         ProduceExamEffectType.ExamStaminaRecoverRestriction: 'hp_recovery',
     }
+    growth = list(state.projected_card_growth)
     uncertain_balances: set[str] = set()
     resource_effects = {
         ProduceExamEffectType.ExamLessonBuff: 'lesson_buff',
@@ -100,6 +101,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if verdict != TriggerVerdict.INACTIVE and effect.effect_type == ProduceExamEffectType.ExamAddGrowEffect:
+            growth.append((getattr(effect, '_id', ''), verdict == TriggerVerdict.ACTIVE))
         if verdict == TriggerVerdict.UNKNOWN and effect.effect_type in resource_effects:
             # Skipping an uncertain effect does not prove that the old balance
             # survives. It may change before the second card pays.
@@ -176,6 +179,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         hp_known=hp_known,
         genki_known=genki_known,
         projected_resource_restrictions=frozenset(restrictions),
+        projected_card_growth=tuple(growth),
     )
 
 

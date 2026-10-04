@@ -143,6 +143,13 @@ class BattleState:
     grants. This does not claim the restriction was observed on the HUD.
     """
 
+    projected_card_growth: tuple[tuple[str, bool], ...] = ()
+    """Growth effect IDs and confirmed-trigger flags, only for same-turn search.
+
+    Rules match each candidate's metadata rather than changing DB cards or
+    treating every copy of a card ID as one observed instance.
+    """
+
     @property
     def effect_values_for_planning(self) -> tuple[tuple[str, int | None], ...]:
         return (

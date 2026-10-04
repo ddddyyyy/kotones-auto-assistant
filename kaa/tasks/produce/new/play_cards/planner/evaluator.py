@@ -18,7 +18,7 @@ from kaa.db.skill_card import ProduceExamEffect, SkillCard
 
 from .state import BattleState
 from .profiles import profile_for
-from .costs import play_cost
+from .costs import play_cost, projected_growth_output_supported
 from .simulator import simulate_play, simulate_play_prefix
 from .trigger import TriggerVerdict, evaluate_trigger_id, load_exam_trigger
 
@@ -290,6 +290,7 @@ class EffectHeuristicEvaluator:
                 ProduceExamEffectType.ExamLessonDependBlock,
             }:
                 effect_state = simulate_play_prefix(state, card, effect_index)
+            output_inputs_known &= projected_growth_output_supported(effect_state, card)
             output_multiplier = self._output_multiplier(effect_state)
 
             def trusted_balance(name: str, modeled: int) -> bool:

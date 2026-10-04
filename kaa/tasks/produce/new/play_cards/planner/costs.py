@@ -6,6 +6,7 @@ and persistent stamina modifiers still need calibration.
 from __future__ import annotations
 
 from kaa.db.skill_card import SkillCard
+from kaa.db.card_growth import get_card_growth_rule
 from .state import AnomalyStance, BattleState
 
 SPECIAL_COST_EFFECTS = {
@@ -18,22 +19,60 @@ SPECIAL_COST_EFFECTS = {
 }
 
 
+def projected_growth_payment(state: BattleState, card: SkillCard) -> tuple[int, int, bool]:
+    green = max(0, getattr(card, 'stamina', 0) or 0)
+    red = max(0, getattr(card, 'force_stamina', 0) or 0)
+    known = True
+    for effect_id, active in state.projected_card_growth:
+        rule = get_card_growth_rule(effect_id)
+        match = rule.matches(card)
+        if match is False:
+            continue
+        if match is None or not active or not rule.costs_known:
+            known = False
+            continue
+        for change in rule.green_changes:
+            green = max(0, green + change)
+        for change in rule.red_changes:
+            red = max(0, red + change)
+    return green, red, known
+
+
+def projected_growth_output_supported(state: BattleState, card: SkillCard) -> bool:
+    return all(
+        rule.matches(card) is False or not rule.output_changed
+        for effect_id, _active in state.projected_card_growth
+        for rule in (get_card_growth_rule(effect_id),)
+    )
+
+
 def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
     """Keep uncalibrated modifier combinations out of payment proofs."""
+    green, red, growth_known = projected_growth_payment(state, card)
+    if not growth_known:
+        return False
     if state.projected_effect_values is None or state.projected_stamina_consumption is None:
         return True
-    if not (getattr(card, 'stamina', 0) or getattr(card, 'force_stamina', 0)):
+    if any(
+        rule.matches(card) is not False and (rule.green_changes or rule.red_changes)
+        for effect_id, _active in state.projected_card_growth
+        for rule in (get_card_growth_rule(effect_id),)
+    ):
+        # Growth plus temporary consumption modifiers has no payment evidence.
+        return False
+    if not (green or red):
         return True
     return (
         state.projected_stamina_consumption == 'half'
         and state.anomaly.stance == AnomalyStance.NORMAL
         and not state.anomaly.full_power_active
-        and not getattr(card, 'force_stamina', 0)
+        and not red
     )
 
 
 def play_cost(state: BattleState, card: SkillCard) -> tuple[int, int]:
     """Green (genki first) and red (HP only) costs before card effects."""
+    green, red, _growth_known = projected_growth_payment(state, card)
     if (
         state.projected_effect_values is not None
         and state.projected_stamina_consumption == 'half'
@@ -42,7 +81,7 @@ def play_cost(state: BattleState, card: SkillCard) -> tuple[int, int]:
         # Calibrated green costs 4->2, 3->2 and 2->1. The modifier starts
         # after the granting card pays; repeated grants extend duration,
         # rather than halving an already reduced cost again.
-        return ((max(0, getattr(card, 'stamina', 0) or 0) + 1) // 2, 0)
+        return ((green + 1) // 2, 0)
     multiplier = 1.0
     if not state.anomaly.full_power_active:
         stance = state.anomaly.stance.value
@@ -53,8 +92,8 @@ def play_cost(state: BattleState, card: SkillCard) -> tuple[int, int]:
         elif stance == 'preservation_2':
             multiplier = 0.25
     return (
-        round(max(0, getattr(card, 'stamina', 0) or 0) * multiplier),
-        round(max(0, getattr(card, 'force_stamina', 0) or 0) * multiplier),
+        round(green * multiplier),
+        round(red * multiplier),
     )
 
 
@@ -64,6 +103,8 @@ def special_cost_affordability(state: BattleState, card: SkillCard) -> bool | No
     A missing observation must not turn the inferred default zero into a
     rejection. Unknown costs remain unknown rather than free in lookahead.
     """
+    if not projected_growth_payment(state, card)[2]:
+        return None
     value = max(0, getattr(card, 'cost_value', 0) or 0)
     kind = getattr(card, 'cost_type', None)
     if value == 0:

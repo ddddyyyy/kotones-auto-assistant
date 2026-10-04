@@ -1,0 +1,81 @@
+"""Conservative growth targets and stamina-cost changes from master data."""
+from dataclasses import dataclass
+from functools import lru_cache
+
+from ._util import parse_id_list, register_cache_clear
+from .skill_card import SkillCard, load_exam_effects
+from .sqlite import select, select_many
+
+
+@dataclass(frozen=True)
+class CardGrowthRule:
+    categories: tuple[str, ...] = ()
+    target_known: bool = False
+    green_changes: tuple[int, ...] = ()
+    red_changes: tuple[int, ...] = ()
+    costs_known: bool = False
+    output_changed: bool = True
+
+    def matches(self, card: SkillCard) -> bool | None:
+        category = getattr(card, 'category', None)
+        if self.categories and category and category != 'ProduceCardCategory_Unknown':
+            if category not in self.categories:
+                return False
+        elif self.categories:
+            return None
+        return True if self.target_known else None
+
+
+@lru_cache(maxsize=1024)
+def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
+    effect = load_exam_effects({effect_id}).get(effect_id) if effect_id else None
+    if effect is None:
+        return CardGrowthRule()
+    search = select('SELECT * FROM ProduceCardSearch WHERE id = ?', effect._produce_card_search_id or '')
+    categories = tuple(parse_id_list(search['cardCategories'])) if search else ()
+    target_known = bool(search) and all((
+        search['cardPositionType'] == 'ProduceCardPositionType_DeckAll',
+        not parse_id_list(search['cardRarities']), not parse_id_list(search['produceCardIds']),
+        not parse_id_list(search['upgradeCounts']), not parse_id_list(search['effectGroupIds']),
+        search['planType'] in {'', 'ProducePlanType_Unknown'},
+        search['cardStatusType'] in {'', 'ProduceCardSearchStatusType_Unknown'},
+        search['orderType'] in {'', 'ProduceCardOrderType_Unknown'},
+        search['staminaMinMaxType'] in {'', 'ConditionMinMaxType_Unknown'},
+        search['examEffectType'] in {'', 'ProduceExamEffectType_Unknown'},
+        search['costType'] in {'', 'ExamCostType_Unknown'},
+        not any(search[k] for k in ('cardSearchTag', 'produceCardRandomPoolId',
+            'produceCardPoolId', 'limitCount', 'staminaMin', 'staminaMax', 'isSelf', 'isCustomized')),
+        effect.pick_range_type == 'ProducePickRangeType_All',
+        not effect.pick_count_min, not effect.pick_count_max,
+    ))
+    ids = parse_id_list(effect._produce_card_grow_effect_ids)
+    rows = select_many('SELECT id, effectType, value FROM ProduceCardGrowEffect WHERE id IN ('
+                       + ','.join('?' for _ in ids) + ')', *ids) if ids else []
+    data = {row['id']: row for row in rows}
+    known = bool(ids) and len(data) == len(set(ids))
+    green: list[int] = []
+    red: list[int] = []
+    output_changed = not known
+    for key in ids:
+        row = data.get(key)
+        if row is None:
+            continue
+        kind = row['effectType'].removeprefix('ProduceCardGrowEffectType_')
+        value = row['value']
+        if kind in {'CostAdd', 'CostReduce'}:
+            green.append(value if kind == 'CostAdd' else -value)
+        elif kind in {'CostPenetrateAdd', 'CostPenetrateReduce'}:
+            red.append(value if kind == 'CostPenetrateAdd' else -value)
+        else:
+            output_changed = True
+            # Special-resource fees and changes to triggers/effects need more
+            # than a static stamina delta to establish the next play's cost.
+            if kind.startswith('Cost') or kind in {
+                'EffectAdd', 'EffectChange', 'PlayTriggerChange', 'PlayEffectTriggerChange',
+                'CardStatusEnchantChange',
+            }:
+                known = False
+    return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known, output_changed)
+
+
+register_cache_clear(get_card_growth_rule.cache_clear)
