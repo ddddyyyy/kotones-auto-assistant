@@ -180,6 +180,28 @@ class HandLayoutGate:
         return True
 
 
+
+class SelectedCardPreviewGate:
+    """Allow one confirmation while the same hand preview remains visible."""
+
+    def __init__(self):
+        self.confirmed_x: int | None = None
+
+    def observe(self, rect: Rect | None) -> None:
+        # The label bobs vertically during animation. Only a different hand
+        # position or an absent label starts a new confirmation opportunity.
+        if rect is None or (
+            self.confirmed_x is not None and abs(rect.x1 - self.confirmed_x) > 2
+        ):
+            self.confirmed_x = None
+
+    def can_confirm(self) -> bool:
+        return self.confirmed_x is None
+
+    def confirmed(self, rect: Rect) -> None:
+        self.confirmed_x = rect.x1
+
+
 def _confirm_selected_card_preview(screen: MatLike) -> bool:
     """Confirm the observed SELECT label without switching to another hand card."""
     rect = _selected_card_preview_rect(screen)
@@ -284,11 +306,20 @@ def do_cards(
     drink_retries = 0
     DRINK_MAX_RETRIES = 5
     animation_gate = CardAnimationGate()
+    preview_gate = SelectedCardPreviewGate()
     hand_layout_gate = HandLayoutGate()
 
     def finish_card_animation() -> None:
         hand_layout_gate.reset()
         _finish_card_animation(result_observer)
+
+    def confirm_selected_preview(screen: MatLike, rect: Rect | None) -> bool:
+        if rect is None or not preview_gate.can_confirm():
+            return False
+        if not _confirm_selected_card_preview(screen):
+            return False
+        preview_gate.confirmed(rect)
+        return True
 
     def try_battle_strategy(screen: MatLike) -> bool:
         if battle_strategy is None:
@@ -373,9 +404,11 @@ def do_cards(
         # Hand letters can already be visible while the previous card is
         # still resolving. Do not treat that as permission to click another
         # hand card. This sits before both planner and recommendation paths.
+        preview_rect = _selected_card_preview_rect(img)
+        preview_gate.observe(preview_rect)
         if animation_gate.should_wait(img):
             hand_layout_gate.reset()
-            if _confirm_selected_card_preview(img):
+            if confirm_selected_preview(img, preview_rect):
                 finish_card_animation()
             else:
                 if result_observer is not None:
@@ -402,7 +435,7 @@ def do_cards(
             no_card_cd.start()
             if no_card_cd.expired():
                 no_card_cd.reset()
-                if _confirm_selected_card_preview(img):
+                if confirm_selected_preview(img, preview_rect):
                     card_count = -1
                     timeout_cd.reset()
                     continue
