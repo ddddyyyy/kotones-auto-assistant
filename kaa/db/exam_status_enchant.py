@@ -27,18 +27,21 @@ def _load_chained_effects(
     current = roots
     chained: list[ProduceExamEffect] = []
     for _ in range(3):
-        ids = {
-            effect._chain_produce_exam_effect_id
+        ids = tuple(dict.fromkeys(
+            effect_id
             for effect in current
-            if effect._chain_produce_exam_effect_id
-            and effect._chain_produce_exam_effect_id not in seen
-        }
+            for effect_id in getattr(
+                effect, 'chain_effect_ids',
+                (effect._chain_produce_exam_effect_id,) if effect._chain_produce_exam_effect_id else (),
+            )
+            if effect_id not in seen
+        ))
         if not ids:
             break
-        effect_map = load_exam_effects(ids)
+        effect_map = load_exam_effects(set(ids))
         current = tuple(
             effect_map[effect_id]
-            for effect_id in sorted(ids)
+            for effect_id in ids
             if effect_id in effect_map
         )
         chained.extend(current)

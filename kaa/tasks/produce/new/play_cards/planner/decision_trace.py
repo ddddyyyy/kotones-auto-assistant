@@ -137,6 +137,7 @@ class DecisionTrace:
                             'model': 'stance_only_existing_rounding',
                         } if hand.card is not None else None,
                         'customize_ids': getattr(hand.card, 'customize_ids', None),
+                        'card_status_enchant_id': getattr(hand.card, '_produce_card_status_enchant_id', None),
                         'effects': [
                             {
                                 'trigger_id': getattr(effect, '_produce_exam_trigger_id', ''),
@@ -147,6 +148,7 @@ class DecisionTrace:
                                 'count': getattr(effect.produce_exam_effect, 'effect_count', None),
                                 'turn': getattr(effect.produce_exam_effect, 'effect_turn', None),
                                 'chain_effect_id': getattr(effect.produce_exam_effect, '_chain_produce_exam_effect_id', None),
+                                'chain_effect_ids': getattr(effect.produce_exam_effect, 'chain_effect_ids', ()),
                                 'grow_effect_ids': getattr(effect.produce_exam_effect, '_produce_card_grow_effect_ids', None),
                                 'search_id': getattr(effect.produce_exam_effect, '_produce_card_search_id', None),
                                 'status_enchant_id': getattr(effect.produce_exam_effect, '_produce_exam_status_enchant_id', None),

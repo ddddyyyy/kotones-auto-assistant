@@ -79,6 +79,7 @@ PRODUCE_EXAM_EFFECT_COLUMNS = """
     pickCountMin,
     pickCountMax,
     chainProduceExamEffectId,
+    chainProduceExamEffectIds,
     produceExamStatusEnchantId,
     produceCardStatusEnchantId,
     produceCardGrowEffectIds,
@@ -123,6 +124,8 @@ class ProduceExamEffectRow(BaseModel):
     """选牌数量上限。"""
     chain_produce_exam_effect_id: str | None = Field(None, alias='chainProduceExamEffectId')
     """链式后续效果 ID（ProduceExamEffect.id）。"""
+    chain_produce_exam_effect_ids: str | None = Field(None, alias='chainProduceExamEffectIds')
+    """后续效果列表 JSON，与单个后续效果字段共同保留。"""
     produce_exam_status_enchant_id: str | None = Field(None, alias='produceExamStatusEnchantId')
     """考试状态附魔 ID（ProduceExamStatusEnchant.id）。"""
     produce_card_status_enchant_id: str | None = Field(None, alias='produceCardStatusEnchantId')
@@ -277,6 +280,20 @@ class ProduceExamEffect:
     customize_produce_descriptions: str | None
     """自定义效果描述 JSON（ProduceDescription 数组）。"""
 
+    _chain_produce_exam_effect_ids: str | None = None
+    """后续效果列表 JSON；默认值保持既有构造调用兼容。"""
+
+    @property
+    def chain_effect_ids(self) -> tuple[str, ...]:
+        """Ordered references only, not evidence that these effects fire now."""
+        ids = ([self._chain_produce_exam_effect_id]
+               if self._chain_produce_exam_effect_id else [])
+        ids.extend(parse_id_list(
+            self._chain_produce_exam_effect_ids,
+            context=f'ProduceExamEffect {self._id}.chainProduceExamEffectIds',
+        ))
+        return tuple(dict.fromkeys(ids))
+
     @classmethod
     def from_row(cls, row: ProduceExamEffectRow) -> 'ProduceExamEffect':
         raw = row.effect_type
@@ -308,6 +325,7 @@ class ProduceExamEffect:
             row.effect_group_ids,
             row.produce_descriptions,
             row.customize_produce_descriptions,
+            row.chain_produce_exam_effect_ids,
         )
 
 
