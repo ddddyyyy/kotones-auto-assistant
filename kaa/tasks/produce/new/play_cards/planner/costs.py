@@ -5,6 +5,7 @@ and persistent stamina modifiers still need calibration.
 """
 from __future__ import annotations
 
+from kaa.db.constants import ProduceExamEffectType
 from kaa.db.skill_card import SkillCard
 from kaa.db.card_growth import get_card_growth_rule
 from .state import AnomalyStance, BattleState
@@ -38,12 +39,26 @@ def projected_growth_payment(state: BattleState, card: SkillCard) -> tuple[int, 
     return green, red, known
 
 
-def projected_growth_output_supported(state: BattleState, card: SkillCard) -> bool:
-    return all(
-        rule.matches(card) is False or not rule.output_changed
-        for effect_id, _active in state.projected_card_growth
-        for rule in (get_card_growth_rule(effect_id),)
-    )
+def projected_growth_output(
+    state: BattleState, card: SkillCard, kind: ProduceExamEffectType,
+    value: float, *, applied_count: int,
+) -> tuple[float, bool]:
+    """Apply pre-card base-lesson growth, keeping in-card timing uncertain."""
+    known = True
+    for index, (effect_id, active) in enumerate(state.projected_card_growth):
+        rule = get_card_growth_rule(effect_id)
+        match = rule.matches(card)
+        if match is False or not rule.output_changed:
+            continue
+        if (
+            match is None or not active or index >= applied_count
+            or not rule.output_known or kind != ProduceExamEffectType.ExamLesson
+        ):
+            known = False
+            continue
+        for change in rule.lesson_changes:
+            value = max(0.0, value + change)
+    return value, known
 
 
 def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:

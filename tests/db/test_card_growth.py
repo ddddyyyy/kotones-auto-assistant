@@ -82,3 +82,29 @@ def test_growth_cache_uses_database_update_invalidation(monkeypatch):
         assert not card_growth.get_card_growth_rule('growth').target_known
     finally:
         card_growth.get_card_growth_rule.cache_clear()
+
+
+
+def test_master_lesson_add_and_cost_add_have_supported_output(monkeypatch):
+    _setup(monkeypatch, [('a', 'LessonAdd', 14), ('b', 'CostAdd', 1)])
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert rule.lesson_changes == (14,) and rule.output_known
+        assert rule.green_changes == (1,) and rule.costs_known
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
+
+
+def test_targeted_lesson_growth_keeps_specific_effect_filter_unknown(monkeypatch):
+    _setup(monkeypatch, [('a', 'LessonAdd', 14), ('b', 'CostAdd', 1)])
+    monkeypatch.setattr(card_growth, 'select_many', lambda *_: [
+        dict(id='a', effectType='ProduceCardGrowEffectType_LessonAdd', value=14,
+             targetPlayProduceExamEffectIds='["specific-effect"]'),
+        dict(id='b', effectType='ProduceCardGrowEffectType_CostAdd', value=1),
+    ])
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert not rule.lesson_changes and not rule.output_known
+        assert rule.costs_known and rule.green_changes == (1,)
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()

@@ -127,3 +127,84 @@ def test_two_step_search_does_not_reward_followup_made_unaffordable_by_growth(mo
     ]), state)
     assert ranked[0][1].score == 10
     assert '两步预估后续' not in ranked[0][1].reason
+
+
+
+def _output(kind=ProduceExamEffectType.ExamLesson, value=10, count=1):
+    return SimpleNamespace(produce_exam_effect=SimpleNamespace(
+        effect_type=kind, effect_value1=value, effect_value2=0,
+        effect_count=count, effect_turn=0))
+
+
+@pytest.mark.parametrize('changes,count,expected', [
+    ((5,), 1, 15), ((5,), 2, 30), ((-15,), 1, 0), ((-20, 3), 1, 3),
+])
+def test_pre_card_lesson_growth_changes_each_hit_without_mutating_db_card(monkeypatch, changes, count, expected):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_changes=changes, output_changed=True, output_known=True))
+    effect = _output(count=count)
+    card = _card(green=0, effects=(effect,))
+    result = EffectHeuristicEvaluator().evaluate(card, _state(hp=100))
+    assert result.projected_output == result.confirmed_output == expected
+    assert effect.produce_exam_effect.effect_value1 == 10
+    assert card.play_effects == [effect]
+
+
+def test_lesson_growth_is_applied_before_enthusiasm_and_each_hit_multiplier(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner.state import AnomalyState, AnomalyStance, ExamBuffState
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_changes=(5,), output_known=True))
+    state = replace(_state(hp=100), anomaly=AnomalyState(stance=AnomalyStance.AGGRESSIVE, enthusiasm=2),
+                    buffs=ExamBuffState(parameter_buff_turns=2))
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(count=2),)), state)
+    assert result.projected_output == result.confirmed_output == 102
+
+
+@pytest.mark.parametrize('rule,active', [
+    (_rule(lesson_changes=(5,), output_known=True), False),
+    (CardGrowthRule(lesson_changes=(5,), output_known=True), True),
+    (_rule(lesson_changes=(5,), output_known=False), True),
+])
+def test_unknown_growth_does_not_add_or_confirm_lesson_points(monkeypatch, rule, active):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: rule)
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)),
+        _state(hp=100, growth=(('growth', active),)))
+    assert result.projected_output == 10 and result.confirmed_output == 0
+
+
+def test_other_category_does_not_receive_growth_or_lose_confirmed_output(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_changes=(5,), output_known=True))
+    result = EffectHeuristicEvaluator().evaluate(
+        _card('ProduceCardCategory_MentalSkill', green=0, effects=(_output(),)), _state(hp=100))
+    assert result.projected_output == result.confirmed_output == 10
+
+
+def test_lesson_growth_is_not_assumed_to_change_fixed_lesson(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_changes=(5,), output_known=True))
+    result = EffectHeuristicEvaluator().evaluate(
+        _card(green=0, effects=(_output(ProduceExamEffectType.ExamLessonFix),)), _state(hp=100))
+    assert result.projected_output == 10 and result.confirmed_output == 0
+
+
+def test_growth_granted_inside_current_card_keeps_timing_unknown(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_changes=(5,), output_known=True))
+    grant = SimpleNamespace(produce_exam_effect=SimpleNamespace(_id='growth',
+        effect_type=ProduceExamEffectType.ExamAddGrowEffect, effect_value1=0,
+        effect_value2=0, effect_count=1, effect_turn=0))
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(), grant, _output())),
+        _state(hp=100, growth=()))
+    assert result.projected_output == 20 and result.confirmed_output == 10
+
+
+def test_growth_gain_and_extra_fee_are_evaluated_together(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        green_changes=(1,), lesson_changes=(5,), output_known=True))
+    card = _card(green=4, effects=(_output(),))
+    state = _state(hp=100)
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert costs.play_cost(state, card) == (5, 0)
+    assert result.projected_output == result.confirmed_output == 15
+    assert simulate_play(state, card).hp == 95

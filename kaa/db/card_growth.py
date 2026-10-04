@@ -15,6 +15,8 @@ class CardGrowthRule:
     red_changes: tuple[int, ...] = ()
     costs_known: bool = False
     output_changed: bool = True
+    lesson_changes: tuple[int, ...] = ()
+    output_known: bool = False
 
     def matches(self, card: SkillCard) -> bool | None:
         category = getattr(card, 'category', None)
@@ -49,25 +51,46 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
         not effect.pick_count_min, not effect.pick_count_max,
     ))
     ids = parse_id_list(effect._produce_card_grow_effect_ids)
-    rows = select_many('SELECT id, effectType, value FROM ProduceCardGrowEffect WHERE id IN ('
+    rows = select_many('SELECT * FROM ProduceCardGrowEffect WHERE id IN ('
                        + ','.join('?' for _ in ids) + ')', *ids) if ids else []
-    data = {row['id']: row for row in rows}
+    data = {row['id']: dict(row) for row in rows}
     known = bool(ids) and len(data) == len(set(ids))
     green: list[int] = []
     red: list[int] = []
     output_changed = not known
+    output_known = known
+    lesson: list[int] = []
     for key in ids:
         row = data.get(key)
         if row is None:
             continue
         kind = row['effectType'].removeprefix('ProduceCardGrowEffectType_')
         value = row['value']
+        restricted = bool(
+            row.get('playProduceExamTriggerId') or row.get('playEffectProduceExamTriggerId')
+            or row.get('playProduceExamEffectId') or row.get('produceCardStatusEnchantId')
+            or parse_id_list(row.get('targetPlayEffectProduceExamTriggerIds'))
+            or parse_id_list(row.get('targetPlayProduceExamEffectIds'))
+            or parse_id_list(row.get('effectGroupIds'))
+            or row.get('costType') not in {None, '', 'ExamCostType_Unknown'}
+            or row.get('playMovePositionType') not in {None, '', 'ProduceCardMovePositionType_Unknown'}
+        )
+        if restricted:
+            output_changed = True
+            output_known = False
+            if kind.startswith('Cost'):
+                known = False
+            continue
         if kind in {'CostAdd', 'CostReduce'}:
             green.append(value if kind == 'CostAdd' else -value)
         elif kind in {'CostPenetrateAdd', 'CostPenetrateReduce'}:
             red.append(value if kind == 'CostPenetrateAdd' else -value)
+        elif kind in {'LessonAdd', 'LessonReduce'}:
+            lesson.append(value if kind == 'LessonAdd' else -value)
+            output_changed = True
         else:
             output_changed = True
+            output_known = False
             # Special-resource fees and changes to triggers/effects need more
             # than a static stamina delta to establish the next play's cost.
             if kind.startswith('Cost') or kind in {
@@ -75,7 +98,8 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
                 'CardStatusEnchantChange',
             }:
                 known = False
-    return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known, output_changed)
+    return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known,
+                          output_changed, tuple(lesson), output_known)
 
 
 register_cache_clear(get_card_growth_rule.cache_clear)
