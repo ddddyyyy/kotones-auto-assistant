@@ -81,6 +81,8 @@ class PlannerStrategy(AbstractBattleStrategy):
             if card is not None and card.available and card.card is not None
         ]
         if not hands:
+            if self._decision_trace is not None:
+                self._decision_trace.screening(observed_hands, None, [], [], [], 'no_playable_cards')
             logger.info('Planner found no recognized playable cards.')
             return False
 
@@ -129,10 +131,13 @@ class PlannerStrategy(AbstractBattleStrategy):
             if evaluation is not None
         ]
         if not candidates:
+            if self._decision_trace is not None:
+                self._decision_trace.screening(observed_hands, state, [], [], [], 'no_evaluation')
             logger.info('Planner has no evaluation data; falling back to game recommendation.')
             return False
 
         candidates = self._add_shallow_lookahead(candidates, state)
+        evaluated_candidates = candidates
         # Keep all cards in lookahead: a recovery card may make a currently
         # unaffordable finisher affordable. Only the first play is filtered.
         candidates = [
@@ -140,6 +145,10 @@ class PlannerStrategy(AbstractBattleStrategy):
             if card.card is not None and can_afford_play(state, card.card) is not False
         ]
         if not candidates:
+            if self._decision_trace is not None:
+                self._decision_trace.screening(
+                    observed_hands, state, evaluated_candidates, [], [], 'no_affordable_cards',
+                )
             logger.info('Planner found no cards with sufficient observed resources; falling back.')
             return False
         candidates = self._protect_lesson_scoring_budget(candidates, state)
@@ -184,6 +193,10 @@ class PlannerStrategy(AbstractBattleStrategy):
 
         best_card, best = max(candidates, key=lambda item: item[1].score)
         if self._decision_trace is not None:
+            self._decision_trace.screening(
+                observed_hands, state, evaluated_candidates,
+                traced_candidates, candidates, 'selected',
+            )
             self._decision_trace.decision(state, traced_candidates, best)
         logger.info(
             'Planner selected %s: score=%.1f confidence=%s reason=%s',

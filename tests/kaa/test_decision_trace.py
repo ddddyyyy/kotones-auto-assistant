@@ -128,3 +128,60 @@ def test_battle_end_without_pending_play_does_not_invent_feedback(tmp_path, monk
     strategy._decision_trace = trace
     strategy.on_battle_end()
     assert not trace.path.exists()
+
+
+def _screen_hand(card_id='duplicate', stamina=1, available=True):
+    return SimpleNamespace(card=SimpleNamespace(
+        _id=card_id, stamina=stamina, force_stamina=0, cost_type=None, cost_value=0,
+    ), available=available)
+
+
+def test_screening_keeps_duplicate_slots_unknowns_and_every_filter_reason(tmp_path):
+    trace = DecisionTrace(tmp_path)
+    state = BattleState(remaining_turns=2, hp=2, genki=0)
+    rejected = _screen_hand(stamina=3)
+    admitted = _screen_hand()
+    clear_filtered = _screen_hand('setup')
+    no_evaluation = _screen_hand('no-eval')
+    unavailable = _screen_hand('unavailable', available=False)
+    evaluation = CardEvaluation('duplicate', 1, EvaluationConfidence.LOW, 'test')
+    hands = [None, unavailable, no_evaluation, rejected, clear_filtered, admitted]
+    evaluated = [(rejected, evaluation), (clear_filtered, evaluation), (admitted, evaluation)]
+    trace.screening(hands, state, evaluated, evaluated[1:], evaluated[2:], 'selected')
+    event = json.loads(trace.path.read_text(encoding='utf-8'))
+    assert [r['reason'] for r in event['hands']] == [
+        'unrecognized_card', 'unavailable_card', 'no_evaluation',
+        'modeled_unaffordable', 'clear_priority_filter', 'eligible',
+    ]
+    assert event['hands'][3]['card_id'] == event['hands'][5]['card_id']
+    assert event['hands'][3]['slot'] != event['hands'][5]['slot']
+    assert event['hands'][3]['modeled_affordable'] is False
+    assert event['decision_sequence'] == 1
+    assert trace.pending is None and trace.count == 0
+
+
+def test_screening_fallback_preserves_previous_feedback_and_replay(tmp_path):
+    from kaa.tasks.produce.new.play_cards.planner.replay import screen_trace
+    trace = DecisionTrace(tmp_path)
+    _record(trace)
+    trace.screening([None], None, [], [], [], 'no_playable_cards')
+    assert trace.pending == 1
+    trace.feedback(PlayFeedback(PlayFeedbackStatus.UNCONFIRMED, 'insufficient_evidence'))
+    events = [json.loads(line) for line in trace.path.read_text(encoding='utf-8').splitlines()]
+    assert events[1]['decision_sequence'] is None and events[1]['state'] is None
+    assert events[2]['sequence'] == 1
+    assert len(screen_trace(trace.path)) == 1
+
+
+def test_screening_is_bounded_and_write_failure_preserves_feedback(tmp_path):
+    trace = DecisionTrace(tmp_path)
+    trace.screening_count = 255
+    trace.pending = 9
+    trace.screening([], None, [], [], [], 'no_playable_cards')
+    trace.screening([], None, [], [], [], 'no_playable_cards')
+    assert len(trace.path.read_text(encoding='utf-8').splitlines()) == 1
+    assert trace.pending == 9 and trace.screening_count == 256
+    occupied = tmp_path/'occupied';occupied.touch()
+    failing = DecisionTrace(occupied);failing.pending = 10
+    failing.screening([], None, [], [], [], 'no_playable_cards')
+    assert failing.pending == 10

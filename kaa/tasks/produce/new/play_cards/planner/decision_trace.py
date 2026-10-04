@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .state import BattleState
 
 from .costs import play_cost, special_cost_affordability
+from .simulator import can_afford_play
 
 logger = logging.getLogger(__name__)
 TRACE_ENV = 'KAA_PLANNER_TRACE_DIR'
@@ -36,6 +37,7 @@ class DecisionTrace:
     def __init__(self, directory: Path):
         self.path = directory / f'decisions-{uuid4().hex}.jsonl'
         self.count = 0
+        self.screening_count = 0
         self.pending: int | None = None
 
     @classmethod
@@ -48,6 +50,65 @@ class DecisionTrace:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open('a', encoding='utf-8') as stream:
             stream.write(serialized + '\n')
+
+    def screening(
+        self,
+        hands: list['CardGameObject | None'],
+        state: 'BattleState | None',
+        evaluated: list[tuple['CardGameObject', 'CardEvaluation']],
+        admitted: list[tuple['CardGameObject', 'CardEvaluation']],
+        final: list[tuple['CardGameObject', 'CardEvaluation']],
+        outcome: str,
+    ) -> None:
+        """Record each visible slot and why it left selection, without capture.
+
+        Object identity keeps duplicate card IDs distinct. This separate event
+        neither creates a pending play nor clears an earlier feedback link.
+        """
+        if self.screening_count >= 256:
+            return
+        self.screening_count += 1
+        try:
+            evaluations = {id(hand): evaluation for hand, evaluation in evaluated}
+            admitted_ids = {id(hand) for hand, _ in admitted}
+            final_ids = {id(hand) for hand, _ in final}
+            rows = []
+            for slot, hand in enumerate(hands):
+                card = hand.card if hand is not None else None
+                evaluation = evaluations.get(id(hand))
+                if card is None:
+                    reason = 'unrecognized_card'
+                elif hand is not None and not hand.available:
+                    reason = 'unavailable_card'
+                elif evaluation is None:
+                    reason = 'no_evaluation'
+                elif id(hand) not in admitted_ids:
+                    reason = 'modeled_unaffordable'
+                elif id(hand) not in final_ids:
+                    reason = 'clear_priority_filter'
+                else:
+                    reason = 'eligible'
+                rows.append({
+                    'slot': slot,
+                    'card_id': card._id if card is not None else None,
+                    'reason': reason,
+                    'evaluation': asdict(evaluation) if evaluation is not None else None,
+                    'modeled_affordable': can_afford_play(state, card)
+                    if state is not None and card is not None else None,
+                    'modeled_green_red': play_cost(state, card)
+                    if state is not None and card is not None else None,
+                    'cost_model': 'stance_only_existing_rounding',
+                })
+            self._append({
+                'schema_version': 1, 'event': 'candidate_screening',
+                'attempt': self.screening_count, 'outcome': outcome,
+                'decision_sequence': self.count + 1
+                if outcome == 'selected' and self.count < 256 else None,
+                'state': asdict(state) if state is not None else None,
+                'hands': rows,
+            })
+        except Exception:
+            logger.warning('Could not record planner candidate screening.', exc_info=True)
 
     def decision(
         self, state: 'BattleState',

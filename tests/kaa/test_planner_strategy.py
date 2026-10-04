@@ -134,7 +134,9 @@ def test_enabled_decision_trace_does_not_change_selection_or_require_screenshots
     assert second_ctx.committed is second
     path, = tmp_path.glob('decisions-*.jsonl')
     events = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
-    assert [event['event'] for event in events] == ['decision', 'feedback', 'decision']
+    assert [event['event'] for event in events] == ['candidate_screening', 'decision', 'feedback', 'candidate_screening', 'decision']
+    assert [e['decision_sequence'] for e in events if e['event']=='candidate_screening'] == [1, 2]
+    events = [e for e in events if e['event']!='candidate_screening']
     assert events[0]['selected']['card_id'] == 'first'
     assert events[1]['feedback']['evidence'] == 'card_left_hand'
     assert events[0]['state']['observed_remaining_turns'] == 3
@@ -1065,3 +1067,27 @@ def test_ranked_planner_uses_its_own_turn_reader(is_exam, expected):
     planner = PlannerStrategy(is_exam=is_exam)
     state = planner._build_observed_state(cast(Any, ctx), [])
     assert state.observed_remaining_turns == expected
+
+
+@pytest.mark.parametrize('mode, reason', [
+    ('unavailable', 'no_playable_cards'),
+    ('unrecognized', 'no_playable_cards'),
+    ('unrated', 'no_evaluation'),
+    ('unaffordable', 'no_affordable_cards'),
+])
+def test_diagnostic_fallback_is_recorded_without_commit(monkeypatch, tmp_path, mode, reason):
+    import json
+    from kaa.tasks.produce.new.play_cards.planner.decision_trace import TRACE_ENV
+    monkeypatch.setenv(TRACE_ENV, str(tmp_path))
+    monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
+    hand = _planner_hand('card', stamina=100 if mode=='unaffordable' else 0)
+    hand.available = mode!='unavailable'
+    if mode=='unrecognized':hand.card=None
+    ctx = FakeContext([hand])
+    strategy = PlannerStrategy(FakeEvaluator({} if mode=='unrated' else {'card':10}))
+    assert strategy.on_action(ctx) is False
+    assert ctx.committed is None
+    events = [json.loads(line) for line in strategy._decision_trace.path.read_text(encoding='utf-8').splitlines()]
+    assert len(events)==1 and events[0]['event']=='candidate_screening'
+    assert events[0]['outcome']==reason and events[0]['decision_sequence'] is None
+    assert strategy._decision_trace.pending is None
