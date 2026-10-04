@@ -8,7 +8,7 @@ from kaa.db.constants import ProduceExamEffectType
 from kaa.db.skill_card import SkillCard
 
 from .costs import (
-    SPECIAL_COST_EFFECTS, play_cost, special_cost_affordability,
+    SPECIAL_COST_EFFECTS, play_cost, projected_cost_supported, special_cost_affordability,
     special_resource_balances,
 )
 from .memory import BattleMemory
@@ -21,6 +21,8 @@ def can_afford_play(state: BattleState, card: SkillCard) -> bool | None:
     special = special_cost_affordability(state, card)
     if special is False:
         return False
+    if not projected_cost_supported(state, card):
+        return None
     green_cost, red_cost = play_cost(state, card)
     if green_cost == 0 and red_cost == 0:
         return special
@@ -57,15 +59,34 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     genki -= genki_spent
     hp = max(0, hp - (green_cost - genki_spent) - red_cost)
 
+    modifier = state.projected_stamina_consumption if state.projected_effect_values is not None else None
+    modifier_effects = {
+        ProduceExamEffectType.ExamStaminaConsumptionDown,
+        ProduceExamEffectType.ExamStaminaConsumptionAdd,
+        ProduceExamEffectType.ExamStaminaConsumptionDownFix,
+        ProduceExamEffectType.ExamStaminaConsumptionAddFix,
+        ProduceExamEffectType.ExamSearchPlayCardStaminaConsumptionChange,
+    }
     for play_effect in getattr(card, 'play_effects', ()):
         effect = play_effect.produce_exam_effect
         if effect is None or effect.effect_type is None:
             continue
-        if evaluate_trigger_id(
-            getattr(play_effect, '_produce_exam_trigger_id', ''),
-            state,
-        ) != TriggerVerdict.ACTIVE:
+        verdict = evaluate_trigger_id(
+            getattr(play_effect, '_produce_exam_trigger_id', ''), state,
+        )
+        if effect.effect_type in modifier_effects and verdict == TriggerVerdict.UNKNOWN:
+            modifier = 'unknown'
+        if verdict != TriggerVerdict.ACTIVE:
             continue
+        if effect.effect_type in modifier_effects:
+            if (
+                effect.effect_type == ProduceExamEffectType.ExamStaminaConsumptionDown
+                and (effect.effect_turn == -1 or (effect.effect_turn or 0) > 0)
+                and modifier != 'unknown'
+            ):
+                modifier = 'half'
+            else:
+                modifier = 'unknown'
         value = max(0, effect.effect_value1 or 0)
         if effect.effect_type in {
             ProduceExamEffectType.ExamBlock,
@@ -112,4 +133,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         anomaly=memory.anomaly,
         buffs=memory.buffs,
         projected_effect_values=tuple(projected_values.items()),
+        projected_stamina_consumption=modifier,
+        hp_known=state.hp_known and projected_cost_supported(state, card),
+        genki_known=state.genki_known and projected_cost_supported(state, card),
     )

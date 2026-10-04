@@ -6,7 +6,7 @@ and persistent stamina modifiers still need calibration.
 from __future__ import annotations
 
 from kaa.db.skill_card import SkillCard
-from .state import BattleState
+from .state import AnomalyStance, BattleState
 
 SPECIAL_COST_EFFECTS = {
     'ExamCostType_ExamFullPowerPoint': 'full_power_point',
@@ -18,8 +18,31 @@ SPECIAL_COST_EFFECTS = {
 }
 
 
+def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
+    """Keep uncalibrated modifier combinations out of payment proofs."""
+    if state.projected_effect_values is None or state.projected_stamina_consumption is None:
+        return True
+    if not (getattr(card, 'stamina', 0) or getattr(card, 'force_stamina', 0)):
+        return True
+    return (
+        state.projected_stamina_consumption == 'half'
+        and state.anomaly.stance == AnomalyStance.NORMAL
+        and not state.anomaly.full_power_active
+        and not getattr(card, 'force_stamina', 0)
+    )
+
+
 def play_cost(state: BattleState, card: SkillCard) -> tuple[int, int]:
     """Green (genki first) and red (HP only) costs before card effects."""
+    if (
+        state.projected_effect_values is not None
+        and state.projected_stamina_consumption == 'half'
+        and projected_cost_supported(state, card)
+    ):
+        # Calibrated green costs 4->2, 3->2 and 2->1. The modifier starts
+        # after the granting card pays; repeated grants extend duration,
+        # rather than halving an already reduced cost again.
+        return ((max(0, getattr(card, 'stamina', 0) or 0) + 1) // 2, 0)
     multiplier = 1.0
     if not state.anomaly.full_power_active:
         stance = state.anomaly.stance.value

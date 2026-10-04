@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 from kaa.db.constants import ProduceExamEffectType, ProducePlanType
 
@@ -126,6 +127,13 @@ class BattleState:
 
     None denotes an observation state; an empty tuple denotes a simulation
     with no trusted numeric balances. Raw observed_effect_values stay intact.
+    """
+
+    projected_stamina_consumption: Literal['half', 'unknown'] | None = None
+    """Same-turn search modifier, never a HUD observation.
+
+    None retains the existing stance-only estimate; it does not prove the
+    absence of current modifiers. Unknown forbids proving a future payment.
     """
 
     @property

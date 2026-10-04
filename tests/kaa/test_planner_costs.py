@@ -34,6 +34,7 @@ def test_special_payment_is_consumed_before_a_second_card(cost_type, effect, buf
     assert can_afford_play(state, first) is True
     after = simulate_play(state, first)
     assert after.observed_effect_values == state.observed_effect_values
+    assert after.projected_effect_values is not None
     assert dict(after.projected_effect_values)[effect] == 1
     assert can_afford_play(after, first) is False
 
@@ -96,7 +97,9 @@ def test_repeated_lookahead_keeps_raw_hud_and_uses_current_projected_balance():
     twice = simulate_play(once, payment)
     assert state.projected_effect_values is None
     assert once.observed_effect_values == twice.observed_effect_values == state.observed_effect_values
+    assert once.projected_effect_values is not None
     assert dict(once.projected_effect_values)['full_power_point'] == 7
+    assert twice.projected_effect_values is not None
     assert dict(twice.projected_effect_values)['full_power_point'] == 4
     assert can_afford_play(twice, card('ExamCostType_ExamFullPowerPoint', 5)) is False
     condition = ExamTrigger(field_status_types=('ProduceExamFieldStatusType_FullPowerPointUp',),
@@ -112,6 +115,7 @@ def test_projection_does_not_promote_missing_or_conflicting_hud(raw):
                         observed_effect_values=(('full_power_point', raw),))
     after = simulate_play(state, card('ExamCostType_ExamFullPowerPoint', 3))
     assert after.observed_effect_values == state.observed_effect_values
+    assert after.projected_effect_values is not None
     assert dict(after.projected_effect_values)['full_power_point'] is None
     assert can_afford_play(after, card('ExamCostType_ExamFullPowerPoint', 1)) is None
 
@@ -136,6 +140,7 @@ def test_untrusted_projected_balance_cannot_enable_or_disable_a_condition(raw, n
                         observed_effect_values=(('full_power_point', raw),))
     after = simulate_play(state, card('ExamCostType_ExamFullPowerPoint', 3))
     assert after.anomaly.full_power_points == 2
+    assert after.projected_effect_values is not None
     assert dict(after.projected_effect_values)['full_power_point'] is None
     trigger = ExamTrigger(
         field_status_types=('ProduceExamFieldStatusType_FullPowerPointUp',),
@@ -161,3 +166,85 @@ def test_empty_projection_does_not_promote_modeled_buffs_to_numeric_evidence(eff
     trigger = ExamTrigger(field_status_types=('ProduceExamFieldStatusType_' + status,),
                           field_status_values=(1,))
     assert evaluate_exam_trigger(trigger, state) == TriggerVerdict.UNKNOWN
+
+
+def reduction_card(kind='ExamStaminaConsumptionDown', turn=4, stamina=2):
+    from kaa.db.constants import ProduceExamEffectType
+    result = card(stamina=stamina)
+    result.play_effects = [SimpleNamespace(
+        _produce_exam_trigger_id='',
+        produce_exam_effect=SimpleNamespace(
+            effect_type=ProduceExamEffectType('ProduceExamEffectType_' + kind),
+            effect_value1=0, effect_value2=0, effect_turn=turn,
+        ),
+    )]
+    return result
+
+
+def test_reduction_starts_after_payment_and_can_enable_second_card():
+    initial = BattleState(remaining_turns=3, hp=0, genki=4,
+                          observed_effect_values=(('review', 7),))
+    grant = reduction_card()
+    after = simulate_play(initial, grant)
+    assert after.genki == 2  # Grant itself pays its full two points.
+    assert after.projected_stamina_consumption == 'half'
+    assert after.observed_effect_values == initial.observed_effect_values
+    assert initial.projected_stamina_consumption is None
+    assert can_afford_play(replace(initial, genki=2), card(stamina=3)) is False
+    assert can_afford_play(after, card(stamina=3)) is True
+    assert simulate_play(after, card(stamina=3)).genki == 0
+    twice = simulate_play(after, grant)
+    assert twice.genki == 1
+    assert play_cost(twice, card(stamina=3)) == (2, 0)
+
+
+@pytest.mark.parametrize('cost, expected', [(0, 0), (1, 1), (2, 1), (3, 2), (4, 2), (5, 3)])
+def test_projected_half_cost_rounding_and_evaluation_agree(cost, expected):
+    state = simulate_play(BattleState(remaining_turns=3, hp=20, genki=20), reduction_card())
+    paid = card(stamina=cost)
+    assert play_cost(state, paid) == (expected, 0)
+    evaluator = EffectHeuristicEvaluator()
+    assert evaluator.evaluate(paid, state).score - evaluator.evaluate(card(), state).score == -expected
+    assert simulate_play(state, paid).genki == state.genki - expected
+
+
+@pytest.mark.parametrize('verdict', ['inactive', 'unknown'])
+def test_conditional_reduction_does_not_become_confirmed(monkeypatch, verdict):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *args: TriggerVerdict(verdict))
+    state = BattleState(remaining_turns=3, hp=0, genki=4)
+    after = simulate_play(state, reduction_card())
+    assert after.projected_stamina_consumption == (None if verdict == 'inactive' else 'unknown')
+    assert can_afford_play(after, card(stamina=3)) is (False if verdict == 'inactive' else None)
+
+
+@pytest.mark.parametrize('kind', ['ExamStaminaConsumptionAdd', 'ExamStaminaConsumptionDownFix', 'ExamStaminaConsumptionAddFix', 'ExamSearchPlayCardStaminaConsumptionChange'])
+def test_uncalibrated_modifier_invalidates_an_existing_half_projection(kind):
+    initial = BattleState(remaining_turns=3, hp=20, genki=20)
+    half = simulate_play(initial, reduction_card())
+    after = simulate_play(half, reduction_card(kind))
+    assert after.projected_stamina_consumption == 'unknown'
+    assert can_afford_play(after, card(stamina=1)) is None
+    next_state = simulate_play(after, card(stamina=1))
+    assert not next_state.hp_known and not next_state.genki_known
+    assert can_afford_play(after, card()) is True
+
+
+@pytest.mark.parametrize('stance, full_power, force', [
+    (AnomalyStance.AGGRESSIVE, False, 0),
+    (AnomalyStance.PRESERVATION, False, 0),
+    (AnomalyStance.NORMAL, True, 0),
+    (AnomalyStance.NORMAL, False, 1),
+])
+def test_uncalibrated_half_combinations_cannot_prove_payment(stance, full_power, force):
+    after = simulate_play(BattleState(remaining_turns=3, hp=20, genki=20), reduction_card())
+    after = replace(after, anomaly=AnomalyState(stance=stance, full_power_active=full_power))
+    assert can_afford_play(after, card(stamina=3, force=force)) is None
+
+
+def test_raw_state_cannot_use_a_projection_as_a_hud_discount():
+    raw = BattleState(remaining_turns=3, hp=0, genki=2,
+                      projected_stamina_consumption='half')
+    assert play_cost(raw, card(stamina=3)) == (3, 0)
+    assert can_afford_play(raw, card(stamina=3)) is False
