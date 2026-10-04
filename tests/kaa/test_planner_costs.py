@@ -123,3 +123,41 @@ def test_empty_projection_is_not_replaced_with_old_raw_values():
                         projected_effect_values=())
     assert state.effect_values_for_planning == ()
     assert can_afford_play(state, card('ExamCostType_ExamFullPowerPoint', 1)) is None
+
+
+@pytest.mark.parametrize('raw', [None, 0, 8])
+@pytest.mark.parametrize('negated', [False, True])
+def test_untrusted_projected_balance_cannot_enable_or_disable_a_condition(raw, negated):
+    from kaa.tasks.produce.new.play_cards.planner.trigger import (
+        ExamTrigger, TriggerVerdict, evaluate_exam_trigger,
+    )
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+                        anomaly=AnomalyState(full_power_points=5),
+                        observed_effect_values=(('full_power_point', raw),))
+    after = simulate_play(state, card('ExamCostType_ExamFullPowerPoint', 3))
+    assert after.anomaly.full_power_points == 2
+    assert dict(after.projected_effect_values)['full_power_point'] is None
+    trigger = ExamTrigger(
+        field_status_types=('ProduceExamFieldStatusType_FullPowerPointUp',),
+        field_status_values=(1,),
+        field_status_check_types=('ProduceExamTriggerCheckType_Not',) if negated else (),
+    )
+    assert evaluate_exam_trigger(trigger, after) == TriggerVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize('effect, status, buffs', [
+    ('lesson_buff', 'LessonBuffUp', ExamBuffState(lesson_buff=4)),
+    ('review', 'ReviewUp', ExamBuffState(review=4)),
+    ('aggressive', 'CardPlayAggressiveUp', ExamBuffState(aggressive=4)),
+    ('parameter_buff', 'ParameterBuffUp', ExamBuffState(parameter_buff_turns=4)),
+    ('parameter_buff_multiple', 'ParameterBuffMultiplePerTurnUp', ExamBuffState(parameter_buff_multiple_turns=4)),
+])
+def test_empty_projection_does_not_promote_modeled_buffs_to_numeric_evidence(effect, status, buffs):
+    from kaa.tasks.produce.new.play_cards.planner.trigger import (
+        ExamTrigger, TriggerVerdict, evaluate_exam_trigger,
+    )
+    state = BattleState(remaining_turns=3, hp=20, genki=20, buffs=buffs,
+                        observed_effect_values=((effect, 4),), projected_effect_values=())
+    trigger = ExamTrigger(field_status_types=('ProduceExamFieldStatusType_' + status,),
+                          field_status_values=(1,))
+    assert evaluate_exam_trigger(trigger, state) == TriggerVerdict.UNKNOWN

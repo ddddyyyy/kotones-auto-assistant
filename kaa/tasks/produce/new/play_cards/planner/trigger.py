@@ -153,6 +153,14 @@ def _evaluate_field_status(
         if observed_name == 'genki':
             return state.genki >= threshold if state.genki_known else None
         observed = dict(state.effect_values_for_planning).get(observed_name or '')
+        if (
+            state.projected_effect_values is not None
+            and observed_name is not None
+            and observed is None
+        ):
+            # Lookahead explicitly lacks a trusted balance. Inferred buffs or
+            # stale icon presence must not promote it back to numeric evidence.
+            return None
         if observed is not None:
             # A reconciled numeric observation resolves both sides of a
             # threshold, including zero. A conflicting raw reading proves
