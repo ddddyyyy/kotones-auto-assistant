@@ -25,6 +25,8 @@ class ExamTrigger:
     field_status_check_types: tuple[str, ...] = ()
     field_status_types: tuple[str, ...] = ()
     field_status_values: tuple[int, ...] = ()
+    unmodeled_constraints: bool = False
+    """Extra DB constraints require event/card/lesson context we do not have."""
 
 
 def _json_tuple(raw: str | None) -> tuple:
@@ -39,7 +41,9 @@ def load_exam_trigger(trigger_id: str) -> ExamTrigger | None:
     if not trigger_id:
         return None
     row = select(
-        'SELECT phaseTypes, fieldStatusCheckTypes, fieldStatusTypes, fieldStatusValues '
+        'SELECT phaseTypes, fieldStatusCheckTypes, fieldStatusTypes, fieldStatusValues, '
+        'phaseValues, fieldStatusProduceCardSearchIds, produceCardSearchId, '
+        'upperSearchCount, lowerSearchCount, cardMovePositionType, effectTypes, lessonType '
         'FROM ProduceExamTrigger WHERE id = ?',
         trigger_id,
     )
@@ -50,6 +54,16 @@ def load_exam_trigger(trigger_id: str) -> ExamTrigger | None:
         field_status_check_types=_json_tuple(row['fieldStatusCheckTypes']),
         field_status_types=_json_tuple(row['fieldStatusTypes']),
         field_status_values=_json_tuple(row['fieldStatusValues']),
+        unmodeled_constraints=bool(
+            _json_tuple(row['phaseValues'])
+            or any(_json_tuple(row['fieldStatusProduceCardSearchIds']))
+            or row['produceCardSearchId']
+            or row['upperSearchCount']
+            or row['lowerSearchCount']
+            or row['cardMovePositionType'] not in {None, '', 'ProduceCardMovePositionType_Unknown'}
+            or _json_tuple(row['effectTypes'])
+            or row['lessonType'] not in {None, '', 'ProduceStepLessonType_Unknown'}
+        ),
     )
 
 
@@ -71,7 +85,7 @@ def evaluate_exam_trigger(trigger: ExamTrigger | None, state: BattleState) -> Tr
         'ProduceExamPhaseType_None',
         'ProduceExamPhaseType_ExamCardPlay',
     }
-    unknown = any(
+    unknown = trigger.unmodeled_constraints or any(
         phase not in immediate_phases for phase in trigger.phase_types
     )
     for index, status_type in enumerate(trigger.field_status_types):
@@ -187,9 +201,11 @@ def _evaluate_field_status(
             return True
         return False if 'full_power' in state.confirmed_absent_effects else None
     if status_type == 'ProduceExamFieldStatusType_ParameterBuff':
-        if buffs.parameter_buff_turns > 0 or 'parameter_buff' in state.observed_effects:
-            return True
-        return False if 'parameter_buff' in state.confirmed_absent_effects else None
+        # Presence is the same threshold as ParameterBuffUp(1). In search,
+        # trusted projected zero/unknown must take precedence over old icons.
+        return _evaluate_field_status(
+            'ProduceExamFieldStatusType_ParameterBuffUp', 1, state,
+        )
     if status_type == 'ProduceExamFieldStatusType_ConcentrationUp':
         level = 2 if anomaly.stance == AnomalyStance.AGGRESSIVE_2 else (
             1 if anomaly.stance == AnomalyStance.AGGRESSIVE else 0

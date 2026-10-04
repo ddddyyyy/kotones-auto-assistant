@@ -1324,3 +1324,23 @@ def test_unknown_preceding_stance_does_not_confirm_later_output(monkeypatch):
     result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
         BattleState(remaining_turns=3, hp=20, genki=10))
     assert result.projected_output == 19 and result.confirmed_output == 4
+
+
+@pytest.mark.parametrize('cost,expected', [(1, 15), (2, 0)])
+def test_followup_condition_uses_remaining_parameter_buff_after_payment(monkeypatch, cost, expected):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    condition = trigger.ExamTrigger(field_status_types=('ProduceExamFieldStatusType_ParameterBuff',))
+    monkeypatch.setattr(trigger, 'load_exam_trigger', lambda key: condition if key else None)
+    payment = _card('payment', cost_type='ExamCostType_ExamParameterBuff', cost_value=cost)
+    effect = _effect(ProduceExamEffectType.ExamLesson, 10)
+    effect._produce_exam_trigger_id = 'has-parameter-buff'
+    followup = _card('conditional-output', effect)
+    state = BattleState(remaining_turns=3, hp=20, genki=20, playable_count=2,
+        buffs=ExamBuffState(parameter_buff_turns=2),
+        observed_effects=frozenset({'parameter_buff'}),
+        observed_effect_values=(('parameter_buff', 2),))
+    after = simulate_play(state, cast(Any, payment))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, followup), after)
+    assert result.projected_output == result.confirmed_output == expected
+    assert after.observed_effect_values == state.observed_effect_values

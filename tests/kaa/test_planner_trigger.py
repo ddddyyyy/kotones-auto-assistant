@@ -203,19 +203,26 @@ def test_database_update_invalidates_existing_and_missing_triggers(monkeypatch):
         if row is None:
             return None
         return {'phaseTypes': row['phaseTypes'], 'fieldStatusCheckTypes': '[]',
-                'fieldStatusTypes': '[]', 'fieldStatusValues': '[]'}
+                'fieldStatusTypes': '[]', 'fieldStatusValues': '[]',
+                'phaseValues': '[]', 'fieldStatusProduceCardSearchIds': '[]',
+                'produceCardSearchId': '', 'upperSearchCount': 0, 'lowerSearchCount': 0,
+                'cardMovePositionType': 'ProduceCardMovePositionType_Unknown',
+                'effectTypes': '[]', 'lessonType': 'ProduceStepLessonType_Unknown'}
 
     monkeypatch.setattr(trigger, 'select', select)
     monkeypatch.setattr(_util, 'invalidate_connections', lambda: None)
     trigger.load_exam_trigger.cache_clear()
     try:
-        assert trigger.load_exam_trigger('changed').phase_types == ('old',)
+        loaded = trigger.load_exam_trigger('changed')
+        assert loaded is not None and loaded.phase_types == ('old',)
         assert trigger.load_exam_trigger('missing') is None
         rows['changed'] = {'phaseTypes': '["new"]'}
         rows['missing'] = {'phaseTypes': '["added"]'}
         _util.clear_db_caches()
-        assert trigger.load_exam_trigger('changed').phase_types == ('new',)
-        assert trigger.load_exam_trigger('missing').phase_types == ('added',)
+        loaded = trigger.load_exam_trigger('changed')
+        assert loaded is not None and loaded.phase_types == ('new',)
+        loaded = trigger.load_exam_trigger('missing')
+        assert loaded is not None and loaded.phase_types == ('added',)
         assert calls == ['changed', 'missing', 'changed', 'missing']
     finally:
         trigger.load_exam_trigger.cache_clear()
@@ -259,3 +266,75 @@ def test_missing_named_trigger_is_not_an_unconditional_effect(monkeypatch):
     state = BattleState(remaining_turns=4, hp=20, genki=0)
     assert trigger.evaluate_trigger_id('', state) == TriggerVerdict.ACTIVE
     assert trigger.evaluate_trigger_id('missing-condition', state) == TriggerVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize('column,value', [
+    ('phaseValues', '[1]'),
+    ('fieldStatusProduceCardSearchIds', '["search"]'),
+    ('produceCardSearchId', 'search'),
+    ('upperSearchCount', 2),
+    ('lowerSearchCount', 1),
+    ('cardMovePositionType', 'ProduceCardMovePositionType_Hand'),
+    ('effectTypes', '["ProduceExamEffectType_ExamLesson"]'),
+    ('lessonType', 'ProduceStepLessonType_LessonVisual'),
+])
+def test_unmodeled_database_constraints_never_become_unconditional(monkeypatch, column, value):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    row = {
+        'phaseTypes': '["ProduceExamPhaseType_ExamCardPlay"]',
+        'fieldStatusCheckTypes': '[]', 'fieldStatusTypes': '[]', 'fieldStatusValues': '[]',
+        'phaseValues': '[]', 'fieldStatusProduceCardSearchIds': '[]',
+        'produceCardSearchId': '', 'upperSearchCount': 0, 'lowerSearchCount': 0,
+        'cardMovePositionType': 'ProduceCardMovePositionType_Unknown',
+        'effectTypes': '[]', 'lessonType': 'ProduceStepLessonType_Unknown',
+    }
+    monkeypatch.setattr(trigger, 'select', lambda sql, key: row)
+    trigger.load_exam_trigger.cache_clear()
+    try:
+        state = BattleState(remaining_turns=3, hp=20, genki=20)
+        assert trigger.evaluate_trigger_id('plain', state) == TriggerVerdict.ACTIVE
+        row[column] = value
+        assert trigger.evaluate_trigger_id('constrained', state) == TriggerVerdict.UNKNOWN
+    finally:
+        trigger.load_exam_trigger.cache_clear()
+
+
+def test_known_false_field_disproves_trigger_with_unknown_extra_constraints():
+    condition = replace(_trigger('ProduceExamFieldStatusType_BlockUp', 15),
+                        unmodeled_constraints=True)
+    assert evaluate_exam_trigger(condition,
+        BattleState(remaining_turns=3, hp=20, genki=5)) == TriggerVerdict.INACTIVE
+    assert evaluate_exam_trigger(condition,
+        BattleState(remaining_turns=3, hp=20, genki=20)) == TriggerVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize('balance,expected', [
+    (None, TriggerVerdict.UNKNOWN), (0, TriggerVerdict.INACTIVE),
+    (2, TriggerVerdict.ACTIVE),
+])
+@pytest.mark.parametrize('negated', [False, True])
+def test_parameter_buff_presence_uses_projected_balance_before_raw_icons(balance, expected, negated):
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+        buffs=ExamBuffState(parameter_buff_turns=2 if balance is None else balance),
+        observed_effects=frozenset({'parameter_buff'}),
+        observed_effect_values=(('parameter_buff', 2),),
+        projected_effect_values=(('parameter_buff', balance),))
+    if negated and expected != TriggerVerdict.UNKNOWN:
+        expected = TriggerVerdict.INACTIVE if expected == TriggerVerdict.ACTIVE else TriggerVerdict.ACTIVE
+    assert evaluate_exam_trigger(
+        _trigger('ProduceExamFieldStatusType_ParameterBuff', negated=negated), state) == expected
+
+
+def test_empty_parameter_buff_projection_does_not_reuse_hud_presence():
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+        buffs=ExamBuffState(parameter_buff_turns=2),
+        observed_effects=frozenset({'parameter_buff'}), projected_effect_values=())
+    assert evaluate_exam_trigger(_trigger('ProduceExamFieldStatusType_ParameterBuff'), state) == TriggerVerdict.UNKNOWN
+
+
+def test_conflicting_parameter_buff_number_does_not_confirm_presence():
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+        buffs=ExamBuffState(parameter_buff_turns=2),
+        observed_effects=frozenset({'parameter_buff'}),
+        observed_effect_values=(('parameter_buff', 0),))
+    assert evaluate_exam_trigger(_trigger('ProduceExamFieldStatusType_ParameterBuff'), state) == TriggerVerdict.UNKNOWN
