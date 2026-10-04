@@ -43,7 +43,7 @@ def projected_growth_output(
     state: BattleState, card: SkillCard, kind: ProduceExamEffectType,
     value: float, count: int, *, applied_count: int,
 ) -> tuple[float, int, bool]:
-    """Apply pre-card base-lesson and hit growth; in-card timing stays unknown."""
+    """Apply supported pre-card growth; in-card timing stays unknown."""
     known = True
     for index, (effect_id, active) in enumerate(state.projected_card_growth):
         rule = get_card_growth_rule(effect_id)
@@ -52,13 +52,25 @@ def projected_growth_output(
             continue
         if (
             match is None or not active or index >= applied_count
-            or not rule.output_known or kind != ProduceExamEffectType.ExamLesson
+            or not rule.output_known
         ):
             known = False
             continue
-        for change in rule.lesson_changes:
-            value = max(0.0, value + change)
-        count += sum(rule.lesson_count_changes)
+        if kind == ProduceExamEffectType.ExamLesson:
+            for change in rule.lesson_changes:
+                value = max(0.0, value + change)
+            count += sum(rule.lesson_count_changes)
+        elif kind == ProduceExamEffectType.ExamBlock:
+            value += sum(rule.block_changes)
+        elif kind in {
+            ProduceExamEffectType.ExamLessonDependBlock,
+            ProduceExamEffectType.ExamLessonDependExamCardPlayAggressive,
+            ProduceExamEffectType.ExamLessonDependExamReview,
+        } and not (rule.lesson_changes or rule.lesson_count_changes):
+            # Block growth changes the simulated resource, not this coefficient.
+            pass
+        else:
+            known = False
     return value, count, known
 
 

@@ -281,6 +281,8 @@ class EffectHeuristicEvaluator:
             output_inputs_known = not uncertain_output_state
             effect_state = state
             if kind in self._DIRECT | {
+                ProduceExamEffectType.ExamBlock,
+                ProduceExamEffectType.ExamBlockFix,
                 ProduceExamEffectType.ExamLessonFullPowerPoint,
                 ProduceExamEffectType.ExamMultipleEnthusiasticLesson,
                 ProduceExamEffectType.ExamMultipleLessonBuffLesson,

@@ -34,6 +34,7 @@ class CardGrowthRule:
     effect_groups: tuple[str, ...] | None = ()
     card_ids: tuple[str, ...] | None = ()
     lesson_count_changes: tuple[int, ...] = ()
+    block_changes: tuple[int, ...] = ()
 
     def matches(self, card: SkillCard) -> bool | None:
         category = getattr(card, 'category', None)
@@ -101,6 +102,7 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
     output_known = known
     lesson: list[int] = []
     lesson_counts: list[int] = []
+    blocks: list[int] = []
     for key in ids:
         row = data.get(key)
         if row is None:
@@ -126,6 +128,9 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
             green.append(value if kind == 'CostAdd' else -value)
         elif kind in {'CostPenetrateAdd', 'CostPenetrateReduce'}:
             red.append(value if kind == 'CostPenetrateAdd' else -value)
+        elif kind == 'BlockAdd' and value >= 0:
+            blocks.append(value)
+            output_changed = True
         elif kind == 'LessonCountAdd' and value >= 0:
             lesson_counts.append(value)
             output_changed = True
@@ -143,7 +148,7 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
             }:
                 known = False
     return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known,
-                          output_changed, tuple(lesson), output_known, groups, card_ids, tuple(lesson_counts))
+                          output_changed, tuple(lesson), output_known, groups, card_ids, tuple(lesson_counts), tuple(blocks))
 
 
 register_cache_clear(get_card_growth_rule.cache_clear)

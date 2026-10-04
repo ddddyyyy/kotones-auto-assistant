@@ -173,3 +173,14 @@ def test_multi_or_malformed_card_id_filter_stays_unknown(monkeypatch, raw):
         assert rule.matches(cast(Any, SimpleNamespace(_id='a', category='ProduceCardCategory_ActiveSkill'))) is None
     finally:
         card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('value', [0, 5])
+def test_block_growth_loads_with_lesson_count_without_changing_cost(monkeypatch, value):
+    _setup(monkeypatch, [('a', 'BlockAdd', value), ('b', 'LessonCountAdd', 2)])
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert rule.block_changes == (value,) and rule.lesson_count_changes == (2,)
+        assert rule.output_known and rule.costs_known
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()

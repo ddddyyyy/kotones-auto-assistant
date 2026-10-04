@@ -9,7 +9,7 @@ from kaa.db.constants import ProduceExamEffectType
 from kaa.db.skill_card import SkillCard
 
 from .costs import (
-    SPECIAL_COST_EFFECTS, play_cost, projected_cost_supported, special_cost_affordability,
+    SPECIAL_COST_EFFECTS, play_cost, projected_cost_supported, projected_growth_output, special_cost_affordability,
     special_resource_balances,
 )
 from .memory import BattleMemory
@@ -111,6 +111,10 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             modifier = 'unknown'
         if verdict != TriggerVerdict.INACTIVE and effect.effect_type in restriction_effects:
             restrictions.add(restriction_effects[effect.effect_type])
+        if verdict == TriggerVerdict.UNKNOWN and effect.effect_type in {
+            ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
+        }:
+            genki_known = False
         if verdict != TriggerVerdict.ACTIVE:
             continue
         if effect.effect_type in modifier_effects:
@@ -127,8 +131,13 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             ProduceExamEffectType.ExamBlock,
             ProduceExamEffectType.ExamBlockFix,
         }:
-            genki += value
-            if value and 'genki_gain' in restrictions:
+            block_value, _count, growth_known = projected_growth_output(
+                replace(state, projected_card_growth=tuple(growth)), card,
+                effect.effect_type, value, 1, applied_count=len(state.projected_card_growth),
+            )
+            genki += int(block_value)
+            genki_known &= growth_known
+            if block_value and 'genki_gain' in restrictions:
                 genki_known = False
         elif effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
             hp += value

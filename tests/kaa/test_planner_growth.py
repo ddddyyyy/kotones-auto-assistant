@@ -260,3 +260,66 @@ def test_named_growth_and_cost_apply_only_to_matching_card_type(monkeypatch, can
     result = EffectHeuristicEvaluator().evaluate(card, _state(hp=100))
     assert result.projected_output == result.confirmed_output == expected
     assert costs.play_cost(_state(hp=100), card) == ((7 if candidate == 'same-id' else 4), 0)
+
+
+
+def test_block_growth_feeds_later_payment_without_changing_observation_or_card(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        block_changes=(5,), output_known=True))
+    state = replace(_state(hp=1), observed_genki=0)
+    card = _card(green=0, effects=(_output(ProduceExamEffectType.ExamBlock, 3),))
+    after = simulate_play(state, card)
+    assert after.genki == 8 and after.genki_known and after.observed_genki == 0
+    assert can_afford_play(after, _card(green=9)) is True
+    assert can_afford_play(replace(after, genki=3), _card(green=9)) is False
+    assert state.genki == 0 and card.play_effects[0].produce_exam_effect.effect_value1 == 3
+
+
+def test_block_growth_changes_survival_score_and_same_card_conversion(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        block_changes=(5,), output_known=True))
+    card = _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamBlock, 3),
+        _output(ProduceExamEffectType.ExamLessonDependBlock, 1000),
+    ))
+    state = _state(hp=100)
+    grown = EffectHeuristicEvaluator().evaluate(card, state)
+    base = EffectHeuristicEvaluator().evaluate(card, replace(state, projected_card_growth=()))
+    assert grown.projected_output == grown.confirmed_output == 8
+    assert base.projected_output == base.confirmed_output == 3
+    assert grown.score > base.score
+
+
+@pytest.mark.parametrize('active,restriction,known', [
+    (True, False, True), (False, False, False), (True, True, False),
+])
+def test_uncertain_or_restricted_block_growth_cannot_prove_followup_payment(
+    monkeypatch, active, restriction, known,
+):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        block_changes=(5,), output_known=True))
+    state = replace(_state(hp=1, growth=(('growth', active),)),
+        projected_resource_restrictions=frozenset({'genki_gain'}) if restriction else frozenset())
+    after = simulate_play(state, _card(green=0, effects=(_output(ProduceExamEffectType.ExamBlock, 3),)))
+    assert after.genki_known is known
+    assert can_afford_play(after, _card(green=9)) is (True if known else None)
+
+
+def test_in_card_block_growth_timing_and_fixed_block_remain_unknown(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        block_changes=(5,), output_known=True))
+    grant = _output(ProduceExamEffectType.ExamAddGrowEffect, 0)
+    grant.produce_exam_effect._id = 'growth'
+    after = simulate_play(_state(hp=1, growth=()), _card(green=0, effects=(
+        grant, _output(ProduceExamEffectType.ExamBlock, 3))))
+    assert after.genki == 3 and not after.genki_known
+    fixed = simulate_play(_state(hp=1), _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamBlockFix, 3),)))
+    assert fixed.genki == 3 and not fixed.genki_known
+
+
+def test_unknown_block_trigger_invalidates_old_balance(monkeypatch):
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    after = simulate_play(replace(_state(hp=1, growth=()), genki=3), _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamBlock, 3),)))
+    assert after.genki == 3 and not after.genki_known
