@@ -230,22 +230,18 @@ class EffectHeuristicEvaluator:
                 multiplier *= max(0.1, min(1.0, state.score_gap / 50.0))
             return multiplier * (0.35 if cross_plan else 1.0)
 
-        output_multiplier = 1.0
-        if state.buffs.parameter_buff_turns > 0:
-            output_multiplier *= 1.5
-        if state.buffs.parameter_buff_multiple_turns > 0:
-            output_multiplier *= 1.1
-        stance = 'normal' if state.anomaly.full_power_active else state.anomaly.stance.value
-        if stance == 'aggressive':
-            output_multiplier *= 2.0
-        elif stance == 'aggressive_2':
-            output_multiplier *= 2.5
-        elif stance == 'preservation':
-            output_multiplier *= 0.5
-        elif stance == 'preservation_2':
-            output_multiplier *= 0.25
-        if state.anomaly.full_power_active:
-            output_multiplier *= 3.0
+        uncertain_output_state = False
+        output_state_effects = {
+            ProduceExamEffectType.ExamParameterBuff,
+            ProduceExamEffectType.ExamParameterBuffMultiplePerTurn,
+            ProduceExamEffectType.ExamConcentration,
+            ProduceExamEffectType.ExamPreservation,
+            ProduceExamEffectType.ExamStanceReset,
+            ProduceExamEffectType.StanceLock,
+            ProduceExamEffectType.ExamFullPower,
+            ProduceExamEffectType.ExamFullPowerPoint,
+            ProduceExamEffectType.ExamEnthusiasticAdditive,
+        }
 
         # Use the same integer payment as affordability and shallow search.
         green_cost, red_cost = play_cost(state, card)
@@ -282,9 +278,11 @@ class EffectHeuristicEvaluator:
             count = max(1, effect.effect_count or 1)
             effect_turn = effect.effect_turn or 0
             duration = effect_turn if effect_turn > 0 else turns
-            output_inputs_known = True
+            output_inputs_known = not uncertain_output_state
             effect_state = state
-            if kind in {
+            if kind in self._DIRECT | {
+                ProduceExamEffectType.ExamLessonFullPowerPoint,
+                ProduceExamEffectType.ExamMultipleEnthusiasticLesson,
                 ProduceExamEffectType.ExamMultipleLessonBuffLesson,
                 ProduceExamEffectType.ExamLessonDependParameterBuff,
                 ProduceExamEffectType.ExamLessonDependExamCardPlayAggressive,
@@ -292,21 +290,22 @@ class EffectHeuristicEvaluator:
                 ProduceExamEffectType.ExamLessonDependBlock,
             }:
                 effect_state = simulate_play_prefix(state, card, effect_index)
+            output_multiplier = self._output_multiplier(effect_state)
 
             def trusted_balance(name: str, modeled: int) -> bool:
                 value_read = dict(effect_state.effect_values_for_planning).get(name)
                 return value_read is not None and value_read == modeled
 
             if kind in self._DIRECT:
-                output = (value + state.anomaly.enthusiasm) * count * output_multiplier
+                output = (value + effect_state.anomaly.enthusiasm) * count * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('即时参数')
             elif kind == ProduceExamEffectType.ExamLessonFullPowerPoint:
                 output = (
                     value
-                    + state.anomaly.cumulative_full_power_points * value2 / 1000.0
-                    + state.anomaly.enthusiasm
+                    + effect_state.anomaly.cumulative_full_power_points * value2 / 1000.0
+                    + effect_state.anomaly.enthusiasm
                 ) * count * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
@@ -369,24 +368,24 @@ class EffectHeuristicEvaluator:
                 score += (value / 100.0) * min(turns, 5) * setup_multiplier(kind)
                 reasons.append('体系强化')
             elif kind == ProduceExamEffectType.ExamMultipleLessonBuffLesson:
-                output_inputs_known = value2 == 0 or trusted_balance('lesson_buff', effect_state.buffs.lesson_buff)
+                output_inputs_known &= value2 == 0 or trusted_balance('lesson_buff', effect_state.buffs.lesson_buff)
                 output = (
                     value
                     + effect_state.buffs.lesson_buff * value2 / 1000.0
-                    + state.anomaly.enthusiasm
+                    + effect_state.anomaly.enthusiasm
                 ) * count * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('集中依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependParameterBuff:
-                output_inputs_known = trusted_balance('parameter_buff', effect_state.buffs.parameter_buff_turns)
+                output_inputs_known &= trusted_balance('parameter_buff', effect_state.buffs.parameter_buff_turns)
                 if effect_state.buffs.parameter_buff_turns > 0:
                     output = value / 1000.0 * output_multiplier
                     projected_output += output
                     score += self._score_output(output, state) * late_weight
                 reasons.append('好调依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependExamCardPlayAggressive:
-                output_inputs_known = trusted_balance('aggressive', effect_state.buffs.aggressive)
+                output_inputs_known &= trusted_balance('aggressive', effect_state.buffs.aggressive)
                 output = (
                     effect_state.buffs.aggressive
                     * value
@@ -397,7 +396,7 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('干劲依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependExamReview:
-                output_inputs_known = trusted_balance('review', effect_state.buffs.review)
+                output_inputs_known &= trusted_balance('review', effect_state.buffs.review)
                 output = (
                     effect_state.buffs.review
                     * value
@@ -408,7 +407,7 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('好印象依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependBlock:
-                output_inputs_known = effect_state.genki_known
+                output_inputs_known &= effect_state.genki_known
                 output = effect_state.genki * value / 1000.0 * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
@@ -418,7 +417,7 @@ class EffectHeuristicEvaluator:
                 reasons.append('干劲依赖元气')
             elif kind == ProduceExamEffectType.ExamMultipleEnthusiasticLesson:
                 output = (
-                    state.anomaly.enthusiasm * value / 1000.0
+                    effect_state.anomaly.enthusiasm * value / 1000.0
                 ) * count * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
@@ -557,6 +556,8 @@ class EffectHeuristicEvaluator:
                 )
 
             if trigger_verdict == TriggerVerdict.UNKNOWN:
+                if kind in output_state_effects:
+                    uncertain_output_state = True
                 # Keep some option value for conditions the HUD cannot expose,
                 # but never score them as though they certainly trigger.
                 score = score_before_effect + (score - score_before_effect) * 0.35
@@ -603,6 +604,27 @@ class EffectHeuristicEvaluator:
             projected_output=projected_output,
             confirmed_output=confirmed_output,
         )
+
+    @staticmethod
+    def _output_multiplier(state: BattleState) -> float:
+        multiplier = 1.0
+        if state.buffs.parameter_buff_turns > 0:
+            multiplier *= 1.5
+        if state.buffs.parameter_buff_multiple_turns > 0:
+            multiplier *= 1.1
+        stance = 'normal' if state.anomaly.full_power_active else state.anomaly.stance.value
+        if stance == 'aggressive':
+            multiplier *= 2.0
+        elif stance == 'aggressive_2':
+            multiplier *= 2.5
+        elif stance == 'preservation':
+            multiplier *= 0.5
+        elif stance == 'preservation_2':
+            multiplier *= 0.25
+        if state.anomaly.full_power_active:
+            multiplier *= 3.0
+
+        return multiplier
 
     @classmethod
     def _official_effect_prior(

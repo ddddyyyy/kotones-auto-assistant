@@ -1255,3 +1255,72 @@ def test_same_card_review_reduction_updates_conversion():
                         observed_effect_values=(('review', 5),))
     result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
     assert result.confirmed_output == result.projected_output == 3
+
+
+@pytest.mark.parametrize('reverse,expected', [(False, 30), (True, 15)])
+def test_concentration_multiplier_follows_card_effect_order(reverse, expected):
+    stance = _effect(ProduceExamEffectType.ExamConcentration, 1)
+    output = _effect(ProduceExamEffectType.ExamLesson, 15)
+    card = _card('stance-order', *([output, stance] if reverse else [stance, output]))
+    state = BattleState(remaining_turns=3, hp=20, genki=10)
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.projected_output == result.confirmed_output == expected
+    assert state.anomaly.stance is AnomalyStance.NORMAL
+
+
+@pytest.mark.parametrize('anomaly,expected', [
+    (AnomalyState(stance=AnomalyStance.PRESERVATION), 40),
+    (AnomalyState(stance=AnomalyStance.PRESERVATION_2), 46),
+    (AnomalyState(stance=AnomalyStance.AGGRESSIVE), 37.5),
+    (AnomalyState(stance_locked=True), 15),
+    (AnomalyState(full_power_active=True), 45),
+])
+def test_stance_output_reuses_transition_rewards_and_locks(anomaly, expected):
+    card = _card('stance-transition', _effect(ProduceExamEffectType.ExamConcentration, 1),
+                 _effect(ProduceExamEffectType.ExamLesson, 15))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
+        BattleState(remaining_turns=3, hp=20, genki=10, anomaly=anomaly))
+    assert result.projected_output == result.confirmed_output == expected
+
+
+def test_each_scoring_segment_uses_its_own_parameter_buff_multiplier():
+    card = _card('split-output', _effect(ProduceExamEffectType.ExamLesson, 10),
+                 _effect(ProduceExamEffectType.ExamParameterBuff, 0, turn=2),
+                 _effect(ProduceExamEffectType.ExamLesson, 10))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
+        BattleState(remaining_turns=3, hp=20, genki=10))
+    assert result.projected_output == result.confirmed_output == 25
+
+
+def test_parameter_buff_cost_is_paid_before_output_multiplier():
+    card = _card('buff-payment', _effect(ProduceExamEffectType.ExamLesson, 10),
+                 cost_type='ExamCostType_ExamParameterBuff', cost_value=2)
+    state = BattleState(remaining_turns=3, hp=20, genki=10,
+        buffs=ExamBuffState(parameter_buff_turns=2),
+        observed_effect_values=(('parameter_buff', 2),))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.projected_output == result.confirmed_output == 10
+
+
+def test_enthusiasm_grant_only_affects_later_hits():
+    card = _card('enthusiasm-order', _effect(ProduceExamEffectType.ExamLesson, 4, count=2),
+                 _effect(ProduceExamEffectType.ExamEnthusiasticAdditive, 3),
+                 _effect(ProduceExamEffectType.ExamLesson, 4, count=2))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
+        BattleState(remaining_turns=3, hp=20, genki=10))
+    assert result.projected_output == result.confirmed_output == 22
+
+
+def test_unknown_preceding_stance_does_not_confirm_later_output(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    def trigger(trigger_id, state):
+        return TriggerVerdict.UNKNOWN if trigger_id == 'uncertain-stance' else TriggerVerdict.ACTIVE
+    for module in (evaluator_module, memory_module, simulator):
+        monkeypatch.setattr(module, 'evaluate_trigger_id', trigger)
+    stance = _effect(ProduceExamEffectType.ExamConcentration, 1)
+    stance._produce_exam_trigger_id = 'uncertain-stance'
+    card = _card('unknown-stance', _effect(ProduceExamEffectType.ExamLesson, 4), stance,
+                 _effect(ProduceExamEffectType.ExamLesson, 15))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
+        BattleState(remaining_turns=3, hp=20, genki=10))
+    assert result.projected_output == 19 and result.confirmed_output == 4
