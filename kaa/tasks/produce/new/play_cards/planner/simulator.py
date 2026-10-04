@@ -67,6 +67,31 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         ProduceExamEffectType.ExamStaminaConsumptionAddFix,
         ProduceExamEffectType.ExamSearchPlayCardStaminaConsumptionChange,
     }
+    restrictions = set(
+        state.projected_resource_restrictions
+        if state.projected_effect_values is not None else ()
+    )
+    hp_known = state.hp_known and projected_cost_supported(state, card) and (
+        green_cost == 0 or state.genki_known
+    )
+    genki_known = state.genki_known and projected_cost_supported(state, card)
+    restriction_effects = {
+        ProduceExamEffectType.ExamBlockRestriction: 'genki_gain',
+        ProduceExamEffectType.ExamStaminaRecoverRestriction: 'hp_recovery',
+    }
+    uncertain_balances: set[str] = set()
+    resource_effects = {
+        ProduceExamEffectType.ExamLessonBuff: 'lesson_buff',
+        ProduceExamEffectType.ExamLessonBuffReduce: 'lesson_buff',
+        ProduceExamEffectType.ExamReview: 'review',
+        ProduceExamEffectType.ExamReviewReduce: 'review',
+        ProduceExamEffectType.ExamCardPlayAggressive: 'aggressive',
+        ProduceExamEffectType.ExamAggressiveReduce: 'aggressive',
+        ProduceExamEffectType.ExamParameterBuff: 'parameter_buff',
+        ProduceExamEffectType.ExamParameterBuffMultiplePerTurn: 'parameter_buff_multiple',
+        ProduceExamEffectType.ExamFullPowerPoint: 'full_power_point',
+        ProduceExamEffectType.ExamFullPowerPointReduce: 'full_power_point',
+    }
     for play_effect in getattr(card, 'play_effects', ()):
         effect = play_effect.produce_exam_effect
         if effect is None or effect.effect_type is None:
@@ -74,8 +99,14 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if verdict == TriggerVerdict.UNKNOWN and effect.effect_type in resource_effects:
+            # Skipping an uncertain effect does not prove that the old balance
+            # survives. It may change before the second card pays.
+            uncertain_balances.add(resource_effects[effect.effect_type])
         if effect.effect_type in modifier_effects and verdict == TriggerVerdict.UNKNOWN:
             modifier = 'unknown'
+        if verdict != TriggerVerdict.INACTIVE and effect.effect_type in restriction_effects:
+            restrictions.add(restriction_effects[effect.effect_type])
         if verdict != TriggerVerdict.ACTIVE:
             continue
         if effect.effect_type in modifier_effects:
@@ -93,8 +124,12 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             ProduceExamEffectType.ExamBlockFix,
         }:
             genki += value
+            if value and 'genki_gain' in restrictions:
+                genki_known = False
         elif effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
             hp += value
+            if value and 'hp_recovery' in restrictions:
+                hp_known = False
 
     projected_values = dict(state.effect_values_for_planning)
     balances = {
@@ -111,6 +146,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             projected_values[effect] = (
                 balances[effect]
                 if projected_values[effect] == before_balances[effect]
+                and effect not in uncertain_balances
                 else None
             )
 
@@ -134,6 +170,9 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         buffs=memory.buffs,
         projected_effect_values=tuple(projected_values.items()),
         projected_stamina_consumption=modifier,
-        hp_known=state.hp_known and projected_cost_supported(state, card),
-        genki_known=state.genki_known and projected_cost_supported(state, card),
+        # Green payment spills into HP when genki is insufficient. An unknown
+        # genki balance cannot establish exact remaining HP after that payment.
+        hp_known=hp_known,
+        genki_known=genki_known,
+        projected_resource_restrictions=frozenset(restrictions),
     )

@@ -347,6 +347,12 @@ class BattleMemory:
                         anomaly,
                         extra_play_count=anomaly.extra_play_count + max(1, value),
                     )
+                case ProduceExamEffectType.ExamLessonBuffReduce:
+                    buffs = replace(buffs, lesson_buff=max(0, buffs.lesson_buff - max(0, value)))
+                case ProduceExamEffectType.ExamReviewReduce:
+                    buffs = replace(buffs, review=max(0, buffs.review - max(0, value)))
+                case ProduceExamEffectType.ExamAggressiveReduce:
+                    buffs = replace(buffs, aggressive=max(0, buffs.aggressive - max(0, value)))
                 case ProduceExamEffectType.ExamLessonBuff:
                     buffs = replace(buffs, lesson_buff=max(0, buffs.lesson_buff + value))
                 case ProduceExamEffectType.ExamParameterBuff:

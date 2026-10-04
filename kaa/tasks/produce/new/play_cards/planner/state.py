@@ -136,6 +136,13 @@ class BattleState:
     absence of current modifiers. Unknown forbids proving a future payment.
     """
 
+    projected_resource_restrictions: frozenset[str] = frozenset()
+    """Possible same-turn gain restrictions, used only by search.
+
+    A known or conditionally unknown restriction prevents certifying later
+    grants. This does not claim the restriction was observed on the HUD.
+    """
+
     @property
     def effect_values_for_planning(self) -> tuple[tuple[str, int | None], ...]:
         return (

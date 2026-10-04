@@ -248,3 +248,89 @@ def test_raw_state_cannot_use_a_projection_as_a_hud_discount():
                       projected_stamina_consumption='half')
     assert play_cost(raw, card(stamina=3)) == (3, 0)
     assert can_afford_play(raw, card(stamina=3)) is False
+
+
+def resource_effect_card(kind, value=2):
+    result = reduction_card(kind, turn=0, stamina=0)
+    result.play_effects[0].produce_exam_effect.effect_value1 = value
+    return result
+
+
+def test_unknown_genki_payment_does_not_prove_remaining_hp_budget():
+    initial = BattleState(remaining_turns=3, hp=6, genki=20, genki_known=False)
+    assert can_afford_play(initial, card(stamina=6)) is True
+    after = simulate_play(initial, card(stamina=6))
+    assert not after.hp_known and not after.genki_known
+    assert can_afford_play(after, card(stamina=6)) is None
+    assert initial.hp_known and initial.genki == 20
+
+
+def test_unknown_genki_does_not_invalidate_hp_after_red_only_payment():
+    initial = BattleState(remaining_turns=3, hp=6, genki=20, genki_known=False)
+    after = simulate_play(initial, card(force=2))
+    assert after.hp_known and after.hp == 4
+    assert can_afford_play(after, card(force=5)) is False
+    assert can_afford_play(after, card(force=4)) is True
+
+
+@pytest.mark.parametrize('kind, name, buffs, cost', [
+    ('ExamLessonBuffReduce', 'lesson_buff', ExamBuffState(lesson_buff=5), 'ExamLessonBuff'),
+    ('ExamReviewReduce', 'review', ExamBuffState(review=5), 'ExamReview'),
+    ('ExamAggressiveReduce', 'aggressive', ExamBuffState(aggressive=5), 'ExamCardPlayAggressive'),
+])
+def test_resource_reduction_precedes_next_special_payment(kind, name, buffs, cost):
+    initial = BattleState(remaining_turns=3, hp=20, genki=20, buffs=buffs,
+                          observed_effect_values=((name, 5),))
+    after = simulate_play(initial, resource_effect_card(kind))
+    assert after.projected_effect_values is not None
+    assert dict(after.projected_effect_values)[name] == 3
+    assert can_afford_play(after, card('ExamCostType_' + cost, 4)) is False
+    assert can_afford_play(after, card('ExamCostType_' + cost, 3)) is True
+    assert after.observed_effect_values == initial.observed_effect_values
+
+
+@pytest.mark.parametrize('kind', ['ExamReview', 'ExamReviewReduce'])
+@pytest.mark.parametrize('verdict', ['inactive', 'unknown'])
+def test_uncertain_resource_changes_do_not_reuse_old_budget(monkeypatch, kind, verdict):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *args: TriggerVerdict(verdict))
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', lambda *args: TriggerVerdict(verdict))
+    initial = BattleState(remaining_turns=3, hp=20, genki=20,
+                          buffs=ExamBuffState(review=5), observed_effect_values=(('review', 5),))
+    after = simulate_play(initial, resource_effect_card(kind))
+    expected = True if verdict == 'inactive' else None
+    assert can_afford_play(after, card('ExamCostType_ExamReview', 4)) is expected
+    assert after.observed_effect_values == initial.observed_effect_values
+
+
+def test_restriction_starts_after_earlier_gain_and_invalidates_later_budget():
+    gain = resource_effect_card('ExamBlock', 2)
+    restriction = resource_effect_card('ExamBlockRestriction', 0)
+    initial = BattleState(remaining_turns=3, hp=0, genki=0)
+    gain.play_effects += restriction.play_effects
+    after = simulate_play(initial, gain)
+    assert after.genki_known and after.genki == 2
+    assert after.projected_resource_restrictions == frozenset({'genki_gain'})
+    next_state = simulate_play(after, resource_effect_card('ExamBlock', 4))
+    assert not next_state.genki_known
+    assert can_afford_play(next_state, card(stamina=5)) is None
+    assert initial.projected_resource_restrictions == frozenset()
+
+
+@pytest.mark.parametrize('kind,gain,known', [
+    ('ExamBlockRestriction', 'ExamBlock', 'genki_known'),
+    ('ExamStaminaRecoverRestriction', 'ExamStaminaRecoverFix', 'hp_known'),
+])
+def test_unknown_restriction_cannot_certify_later_recovery(monkeypatch, kind, gain, known):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda trigger, state:
+                        TriggerVerdict.UNKNOWN if trigger == 'uncertain' else TriggerVerdict.ACTIVE)
+    restriction = resource_effect_card(kind, 0)
+    restriction.play_effects[0]._produce_exam_trigger_id = 'uncertain'
+    initial = BattleState(remaining_turns=3, hp=0, genki=0)
+    after = simulate_play(initial, restriction)
+    next_state = simulate_play(after, resource_effect_card(gain, 4))
+    assert not getattr(next_state, known)
+    assert can_afford_play(next_state, card(force=3) if known == 'hp_known' else card(stamina=3)) is None
