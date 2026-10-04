@@ -215,9 +215,7 @@ def _verify_hp_reading(crop: MatLike, value: int) -> int | None:
 
 
 def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
-    """Cross-check a suspicious three-digit genki result on its original crop."""
-    if not 100 <= value < 1000:
-        return value
+    """Verify every genki reading on the same crop; conflicts stay unknown."""
     try:
         results = en().ocr(crop)
         if len(results) != 1 or results[0].confidence < 0.98:
@@ -227,7 +225,8 @@ def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
         if reading == raw:
             return value
         if (
-            len(reading) == 2 and reading.isascii() and reading.isdecimal()
+            100 <= value < 1000
+            and len(reading) == 2 and reading.isascii() and reading.isdecimal()
             and reading[0] != '0' and reading in {raw[:2], raw[1:]}
         ):
             verified = int(reading)
