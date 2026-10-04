@@ -388,3 +388,31 @@ def test_inactive_resource_effect_does_not_invalidate_known_balance(monkeypatch)
     state = replace(_state(hp=100), projected_effect_values=(('review', 0),))
     after = simulate_play(state, _card(green=0, effects=(_output(ProduceExamEffectType.ExamReview, 3),)))
     assert dict(after.effect_values_for_planning)['review'] == 0
+
+
+@pytest.mark.parametrize('cost_changed,output_changed', [(True, True), (False, True), (True, False)])
+def test_intrinsic_enchant_does_not_prove_base_payment_or_output(monkeypatch, cost_changed, output_changed):
+    from kaa.db import card_status_enchant as db
+    monkeypatch.setattr(db, 'get_card_status_enchant', lambda key: SimpleNamespace(
+        cost_changed=cost_changed, output_changed=output_changed))
+    card = _card(green=4, effects=(_output(),))
+    card._produce_card_status_enchant_id = 'enchant'
+    state = _state(hp=100, growth=())
+    assert can_afford_play(state, card) is (None if cost_changed else True)
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert result.projected_output == 10
+    assert result.confirmed_output == (0 if output_changed else 10)
+    assert simulate_play(state, card).hp_known is (not cost_changed)
+
+
+def test_intrinsic_enchant_diagnostic_does_not_invent_remaining_count(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import decision_trace
+    from kaa.db.card_status_enchant import CardStatusEnchant
+    monkeypatch.setattr(decision_trace, 'get_card_status_enchant', lambda key: CardStatusEnchant(
+        key, 'trigger', 2, ('growth',), ('ProduceCardGrowEffectType_LessonAdd',), True, False, True))
+    card = _card()
+    card._produce_card_status_enchant_id = 'enchant'
+    metadata = decision_trace._card_enchant_metadata(card)
+    assert metadata is not None
+    assert metadata['definition']['trigger_count'] == 2
+    assert metadata['remaining_trigger_count'] is None

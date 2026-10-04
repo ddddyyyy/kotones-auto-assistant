@@ -8,6 +8,7 @@ from __future__ import annotations
 from kaa.db.constants import ProduceExamEffectType
 from kaa.db.skill_card import SkillCard
 from kaa.db.card_growth import get_card_growth_rule
+from kaa.db.card_status_enchant import card_enchant_uncertainty
 from .state import AnomalyStance, BattleState
 
 SPECIAL_COST_EFFECTS = {
@@ -23,7 +24,7 @@ SPECIAL_COST_EFFECTS = {
 def projected_growth_payment(state: BattleState, card: SkillCard) -> tuple[int, int, bool]:
     green = max(0, getattr(card, 'stamina', 0) or 0)
     red = max(0, getattr(card, 'force_stamina', 0) or 0)
-    known = True
+    known = not card_enchant_uncertainty(card)[0]
     for effect_id, active in state.projected_card_growth:
         rule = get_card_growth_rule(effect_id)
         match = rule.matches(card)
@@ -44,7 +45,7 @@ def projected_growth_output(
     value: float, count: int, *, applied_count: int,
 ) -> tuple[float, int, bool]:
     """Apply supported pre-card growth; in-card timing stays unknown."""
-    known = True
+    known = not card_enchant_uncertainty(card)[1]
     for index, (effect_id, active) in enumerate(state.projected_card_growth):
         rule = get_card_growth_rule(effect_id)
         match = rule.matches(card)

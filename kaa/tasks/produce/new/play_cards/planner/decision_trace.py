@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from kotonebot import logging
+from kaa.db.card_status_enchant import get_card_status_enchant
 
 if TYPE_CHECKING:
     from ..ui import CardGameObject
@@ -138,6 +139,7 @@ class DecisionTrace:
                         } if hand.card is not None else None,
                         'customize_ids': getattr(hand.card, 'customize_ids', None),
                         'card_status_enchant_id': getattr(hand.card, '_produce_card_status_enchant_id', None),
+                        'card_status_enchant': _card_enchant_metadata(hand.card),
                         'effects': [
                             {
                                 'trigger_id': getattr(effect, '_produce_exam_trigger_id', ''),
@@ -175,3 +177,15 @@ class DecisionTrace:
             })
         except Exception:
             logger.warning('Could not record planner feedback trace.', exc_info=True)
+
+
+def _card_enchant_metadata(card) -> dict | None:
+    enchant_id = getattr(card, '_produce_card_status_enchant_id', None)
+    if not enchant_id:
+        return None
+    enchant = get_card_status_enchant(enchant_id)
+    return {
+        'definition': asdict(enchant) if enchant is not None else None,
+        'remaining_trigger_count': None,
+        'status': 'unobserved_per_instance',
+    }
