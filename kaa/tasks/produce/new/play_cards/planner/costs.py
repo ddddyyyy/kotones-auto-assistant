@@ -41,9 +41,9 @@ def projected_growth_payment(state: BattleState, card: SkillCard) -> tuple[int, 
 
 def projected_growth_output(
     state: BattleState, card: SkillCard, kind: ProduceExamEffectType,
-    value: float, *, applied_count: int,
-) -> tuple[float, bool]:
-    """Apply pre-card base-lesson growth, keeping in-card timing uncertain."""
+    value: float, count: int, *, applied_count: int,
+) -> tuple[float, int, bool]:
+    """Apply pre-card base-lesson and hit growth; in-card timing stays unknown."""
     known = True
     for index, (effect_id, active) in enumerate(state.projected_card_growth):
         rule = get_card_growth_rule(effect_id)
@@ -58,7 +58,8 @@ def projected_growth_output(
             continue
         for change in rule.lesson_changes:
             value = max(0.0, value + change)
-    return value, known
+        count += sum(rule.lesson_count_changes)
+    return value, count, known
 
 
 def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:

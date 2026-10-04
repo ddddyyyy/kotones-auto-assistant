@@ -138,3 +138,38 @@ def test_multiple_or_malformed_search_groups_remain_unknown(monkeypatch, raw):
         assert rule.matches(card) is None
     finally:
         card_growth.get_card_growth_rule.cache_clear()
+
+
+
+@pytest.mark.parametrize('candidate,expected', [('target', True), ('other', False), ('', None)])
+def test_single_card_id_growth_targets_card_type_not_unique_instance(monkeypatch, candidate, expected):
+    _, search = _setup(monkeypatch, [('a', 'LessonCountAdd', 1), ('b', 'CostAdd', 4)])
+    search['produceCardIds'] = '["target"]'
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert rule.target_known and rule.output_known
+        assert rule.lesson_count_changes == (1,) and rule.green_changes == (4,)
+        card = cast(Any, SimpleNamespace(_id=candidate, category='ProduceCardCategory_ActiveSkill'))
+        assert rule.matches(card) is expected
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
+
+
+def test_count_reduction_is_not_assumed_to_have_a_known_minimum(monkeypatch):
+    _setup(monkeypatch, [('a', 'LessonCountReduce', 1), ('b', 'CostAdd', 1)])
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert not rule.output_known and not rule.lesson_count_changes
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('raw', ['["a", "b"]', 'invalid-json'])
+def test_multi_or_malformed_card_id_filter_stays_unknown(monkeypatch, raw):
+    _, search = _setup(monkeypatch, [('a', 'LessonCountAdd', 1), ('b', 'CostAdd', 1)])
+    search['produceCardIds'] = raw
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert rule.matches(cast(Any, SimpleNamespace(_id='a', category='ProduceCardCategory_ActiveSkill'))) is None
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()

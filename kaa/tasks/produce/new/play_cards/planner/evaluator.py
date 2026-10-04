@@ -291,12 +291,13 @@ class EffectHeuristicEvaluator:
             }:
                 effect_state = simulate_play_prefix(state, card, effect_index)
             base_value = value
-            value, growth_output_known = projected_growth_output(
-                effect_state, card, kind, value,
+            base_count = count
+            value, count, growth_output_known = projected_growth_output(
+                effect_state, card, kind, value, count,
                 applied_count=len(state.projected_card_growth),
             )
             output_inputs_known &= growth_output_known
-            if value != base_value:
+            if value != base_value or count != base_count:
                 reasons.append('成长参数预测')
             output_multiplier = self._output_multiplier(effect_state)
 

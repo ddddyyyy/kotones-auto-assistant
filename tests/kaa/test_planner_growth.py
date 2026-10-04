@@ -229,3 +229,34 @@ def test_effect_group_filter_controls_growth_cost_and_output_together(
     assert result.projected_output == output and result.confirmed_output == confirmed
     assert can_afford_play(state, card) is affordable
     assert card.stamina == 4 and card.play_effects[0].produce_exam_effect.effect_value1 == 10
+
+
+
+@pytest.mark.parametrize('base_count,additions,expected', [(1, (1,), 20), (2, (1,), 30), (1, (1, 2), 40)])
+def test_lesson_count_growth_adds_hits_to_existing_card_count(monkeypatch, base_count, additions, expected):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_count_changes=additions, output_known=True))
+    effect = _output(count=base_count)
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(effect,)), _state(hp=100))
+    assert result.projected_output == result.confirmed_output == expected
+    assert effect.produce_exam_effect.effect_count == base_count
+
+
+def test_lesson_count_growth_repeats_enthusiasm_and_multiplier_for_added_hits(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner.state import AnomalyState, AnomalyStance
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        lesson_changes=(5,), lesson_count_changes=(1,), output_known=True))
+    state = replace(_state(hp=100), anomaly=AnomalyState(enthusiasm=2, stance=AnomalyStance.AGGRESSIVE))
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)), state)
+    assert result.projected_output == result.confirmed_output == 68
+
+
+@pytest.mark.parametrize('candidate,expected', [('same-id', 20), ('different-id', 10)])
+def test_named_growth_and_cost_apply_only_to_matching_card_type(monkeypatch, candidate, expected):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
+        card_ids=('same-id',), green_changes=(3,), lesson_count_changes=(1,), output_known=True))
+    card = _card(green=4, effects=(_output(),))
+    card._id = candidate
+    result = EffectHeuristicEvaluator().evaluate(card, _state(hp=100))
+    assert result.projected_output == result.confirmed_output == expected
+    assert costs.play_cost(_state(hp=100), card) == ((7 if candidate == 'same-id' else 4), 0)

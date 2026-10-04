@@ -32,6 +32,8 @@ class CardGrowthRule:
     lesson_changes: tuple[int, ...] = ()
     output_known: bool = False
     effect_groups: tuple[str, ...] | None = ()
+    card_ids: tuple[str, ...] | None = ()
+    lesson_count_changes: tuple[int, ...] = ()
 
     def matches(self, card: SkillCard) -> bool | None:
         category = getattr(card, 'category', None)
@@ -40,6 +42,16 @@ class CardGrowthRule:
                 return False
         elif self.categories:
             return None
+        if self.card_ids is None:
+            return None
+        if self.card_ids:
+            if len(self.card_ids) != 1:
+                return None
+            card_id = getattr(card, '_id', None)
+            if not card_id:
+                return None
+            if card_id != self.card_ids[0]:
+                return False
         if self.effect_groups is None:
             return None
         if self.effect_groups:
@@ -62,9 +74,10 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
     search = select('SELECT * FROM ProduceCardSearch WHERE id = ?', effect._produce_card_search_id or '')
     categories = tuple(parse_id_list(search['cardCategories'])) if search else ()
     groups = _effect_groups(search['effectGroupIds']) if search else None
+    card_ids = _effect_groups(search['produceCardIds']) if search else None
     target_known = bool(search) and all((
         search['cardPositionType'] == 'ProduceCardPositionType_DeckAll',
-        not parse_id_list(search['cardRarities']), not parse_id_list(search['produceCardIds']),
+        not parse_id_list(search['cardRarities']), card_ids is not None and len(card_ids) <= 1,
         not parse_id_list(search['upgradeCounts']), groups is not None and len(groups) <= 1,
         search['planType'] in {'', 'ProducePlanType_Unknown'},
         search['cardStatusType'] in {'', 'ProduceCardSearchStatusType_Unknown'},
@@ -87,6 +100,7 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
     output_changed = not known
     output_known = known
     lesson: list[int] = []
+    lesson_counts: list[int] = []
     for key in ids:
         row = data.get(key)
         if row is None:
@@ -112,6 +126,9 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
             green.append(value if kind == 'CostAdd' else -value)
         elif kind in {'CostPenetrateAdd', 'CostPenetrateReduce'}:
             red.append(value if kind == 'CostPenetrateAdd' else -value)
+        elif kind == 'LessonCountAdd' and value >= 0:
+            lesson_counts.append(value)
+            output_changed = True
         elif kind in {'LessonAdd', 'LessonReduce'}:
             lesson.append(value if kind == 'LessonAdd' else -value)
             output_changed = True
@@ -126,7 +143,7 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
             }:
                 known = False
     return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known,
-                          output_changed, tuple(lesson), output_known, groups)
+                          output_changed, tuple(lesson), output_known, groups, card_ids, tuple(lesson_counts))
 
 
 register_cache_clear(get_card_growth_rule.cache_clear)
