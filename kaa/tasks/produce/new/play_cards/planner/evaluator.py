@@ -19,7 +19,7 @@ from kaa.db.skill_card import ProduceExamEffect, SkillCard
 from .state import BattleState
 from .profiles import profile_for
 from .costs import play_cost
-from .simulator import simulate_play
+from .simulator import simulate_play, simulate_play_prefix
 from .trigger import TriggerVerdict, evaluate_trigger_id, load_exam_trigger
 
 
@@ -263,7 +263,7 @@ class EffectHeuristicEvaluator:
         )
         score -= red_cost * red_weight
 
-        for play_effect in card.play_effects:
+        for effect_index, play_effect in enumerate(card.play_effects):
             effect = play_effect.produce_exam_effect
             if effect is None or effect.effect_type is None:
                 continue
@@ -282,6 +282,20 @@ class EffectHeuristicEvaluator:
             count = max(1, effect.effect_count or 1)
             effect_turn = effect.effect_turn or 0
             duration = effect_turn if effect_turn > 0 else turns
+            output_inputs_known = True
+            effect_state = state
+            if kind in {
+                ProduceExamEffectType.ExamMultipleLessonBuffLesson,
+                ProduceExamEffectType.ExamLessonDependParameterBuff,
+                ProduceExamEffectType.ExamLessonDependExamCardPlayAggressive,
+                ProduceExamEffectType.ExamLessonDependExamReview,
+                ProduceExamEffectType.ExamLessonDependBlock,
+            }:
+                effect_state = simulate_play_prefix(state, card, effect_index)
+
+            def trusted_balance(name: str, modeled: int) -> bool:
+                value_read = dict(effect_state.effect_values_for_planning).get(name)
+                return value_read is not None and value_read == modeled
 
             if kind in self._DIRECT:
                 output = (value + state.anomaly.enthusiasm) * count * output_multiplier
@@ -355,23 +369,26 @@ class EffectHeuristicEvaluator:
                 score += (value / 100.0) * min(turns, 5) * setup_multiplier(kind)
                 reasons.append('体系强化')
             elif kind == ProduceExamEffectType.ExamMultipleLessonBuffLesson:
+                output_inputs_known = value2 == 0 or trusted_balance('lesson_buff', effect_state.buffs.lesson_buff)
                 output = (
                     value
-                    + state.buffs.lesson_buff * value2 / 1000.0
+                    + effect_state.buffs.lesson_buff * value2 / 1000.0
                     + state.anomaly.enthusiasm
                 ) * count * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('集中依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependParameterBuff:
-                if state.buffs.parameter_buff_turns > 0:
+                output_inputs_known = trusted_balance('parameter_buff', effect_state.buffs.parameter_buff_turns)
+                if effect_state.buffs.parameter_buff_turns > 0:
                     output = value / 1000.0 * output_multiplier
                     projected_output += output
                     score += self._score_output(output, state) * late_weight
                 reasons.append('好调依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependExamCardPlayAggressive:
+                output_inputs_known = trusted_balance('aggressive', effect_state.buffs.aggressive)
                 output = (
-                    state.buffs.aggressive
+                    effect_state.buffs.aggressive
                     * value
                     / 1000.0
                     * output_multiplier
@@ -380,8 +397,9 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('干劲依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependExamReview:
+                output_inputs_known = trusted_balance('review', effect_state.buffs.review)
                 output = (
-                    state.buffs.review
+                    effect_state.buffs.review
                     * value
                     / 1000.0
                     * output_multiplier
@@ -390,7 +408,8 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('好印象依赖参数')
             elif kind == ProduceExamEffectType.ExamLessonDependBlock:
-                output = state.genki * value / 1000.0 * output_multiplier
+                output_inputs_known = effect_state.genki_known
+                output = effect_state.genki * value / 1000.0 * output_multiplier
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('元气依赖参数')
@@ -545,8 +564,10 @@ class EffectHeuristicEvaluator:
                     projected_output - output_before_effect
                 ) * 0.35
                 reasons.append('条件未确认')
-            else:
+            elif output_inputs_known:
                 confirmed_output += max(0.0, projected_output - output_before_effect)
+            elif projected_output > output_before_effect:
+                reasons.append('产分依赖数值未确认')
 
         if cross_plan:
             reasons.append('活动跨流派牌')

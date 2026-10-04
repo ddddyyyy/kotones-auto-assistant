@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import copy
 from dataclasses import replace
 
 from kaa.db.constants import ProduceExamEffectType
@@ -176,3 +177,14 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         genki_known=genki_known,
         projected_resource_restrictions=frozenset(restrictions),
     )
+
+
+def simulate_play_prefix(state: BattleState, card: SkillCard, effect_count: int) -> BattleState:
+    """Pay once, then apply only effects preceding an in-card conversion.
+
+    Work on a shallow card copy; the DB-owned effect list stays unchanged.
+    This reuses search's supported transitions and uncertainty propagation.
+    """
+    prefix = copy(card)
+    prefix.play_effects = card.play_effects[:effect_count]
+    return simulate_play(state, prefix)

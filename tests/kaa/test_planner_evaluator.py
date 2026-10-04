@@ -1181,3 +1181,77 @@ def test_remaining_turn_rejects_out_of_range_readings():
     memory.observe(7, [])
     assert memory.reconcile_remaining_turns(31) == 7
     assert memory.reconcile_remaining_turns(-1) == 7
+
+
+@pytest.mark.parametrize('reverse,expected', [(False, 33), (True, 31)])
+def test_review_conversion_uses_only_preceding_effects(reverse, expected):
+    gain = _effect(ProduceExamEffectType.ExamReview, 2)
+    output = _effect(ProduceExamEffectType.ExamLessonDependExamReview, 1000)
+    effects = [output, gain] if reverse else [gain, output]
+    card = _card('review-order', *effects)
+    before = BattleState(remaining_turns=3, hp=33, genki=92,
+                         buffs=ExamBuffState(review=31), observed_effect_values=(('review', 31),))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), before)
+    assert result.projected_output == expected and result.confirmed_output == expected
+    assert card.play_effects == effects and before.buffs.review == 31
+
+
+@pytest.mark.parametrize('observed', [(), (('review', None),), (('review', 30),)])
+def test_inferred_missing_or_conflicting_review_is_not_confirmed_output(observed):
+    card = _card('review-unknown', _effect(ProduceExamEffectType.ExamReview, 2),
+                 _effect(ProduceExamEffectType.ExamLessonDependExamReview, 1000))
+    before = BattleState(remaining_turns=3, hp=33, genki=92,
+                         buffs=ExamBuffState(review=31), observed_effect_values=observed)
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), before)
+    assert result.projected_output == 33 and result.confirmed_output == 0
+    assert '产分依赖数值未确认' in result.reason
+
+
+def test_review_cost_is_paid_before_conversion():
+    card = _card('review-payment', _effect(ProduceExamEffectType.ExamLessonDependExamReview, 1000),
+                 cost_type='ExamCostType_ExamReview', cost_value=3)
+    before = BattleState(remaining_turns=3, hp=20, genki=20,
+                         buffs=ExamBuffState(review=5), observed_effect_values=(('review', 5),))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), before)
+    assert result.projected_output == result.confirmed_output == 2
+
+
+@pytest.mark.parametrize('known,confirmed', [(True, 11), (False, 0)])
+def test_genki_conversion_pays_then_applies_preceding_gain(known, confirmed):
+    card = _card('genki-order', _effect(ProduceExamEffectType.ExamBlock, 10),
+                 _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000), cost=4)
+    before = BattleState(remaining_turns=3, hp=20, genki=5, genki_known=known)
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), before)
+    assert result.projected_output == 11 and result.confirmed_output == confirmed
+
+
+def test_empty_projected_review_does_not_reuse_raw_hud_for_output():
+    card = _card('projected-unknown', _effect(ProduceExamEffectType.ExamLessonDependExamReview, 1000))
+    state = BattleState(remaining_turns=3, hp=20, genki=20, buffs=ExamBuffState(review=31),
+                        observed_effect_values=(('review', 31),), projected_effect_values=())
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.projected_output == 31 and result.confirmed_output == 0
+
+
+def test_unknown_preceding_review_effect_invalidates_conversion(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    def trigger(trigger_id, state):
+        return TriggerVerdict.UNKNOWN if trigger_id == 'uncertain' else TriggerVerdict.ACTIVE
+    for module in (evaluator_module, memory_module, simulator):
+        monkeypatch.setattr(module, 'evaluate_trigger_id', trigger)
+    gain = _effect(ProduceExamEffectType.ExamReview, 2)
+    gain._produce_exam_trigger_id = 'uncertain'
+    card = _card('uncertain-sequence', gain, _effect(ProduceExamEffectType.ExamLessonDependExamReview, 1000))
+    state = BattleState(remaining_turns=3, hp=20, genki=20, buffs=ExamBuffState(review=31),
+                        observed_effect_values=(('review', 31),))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.confirmed_output == 0 and result.projected_output == 31
+
+
+def test_same_card_review_reduction_updates_conversion():
+    card = _card('reduced-review', _effect(ProduceExamEffectType.ExamReviewReduce, 2),
+                 _effect(ProduceExamEffectType.ExamLessonDependExamReview, 1000))
+    state = BattleState(remaining_turns=3, hp=20, genki=20, buffs=ExamBuffState(review=5),
+                        observed_effect_values=(('review', 5),))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.confirmed_output == result.projected_output == 3
