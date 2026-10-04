@@ -108,3 +108,33 @@ def test_targeted_lesson_growth_keeps_specific_effect_filter_unknown(monkeypatch
         assert rule.costs_known and rule.green_changes == (1,)
     finally:
         card_growth.get_card_growth_rule.cache_clear()
+
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('["group", "other"]', True), ('["other"]', False), ('[]', False),
+    (None, None), ('', None), ('invalid-json', None), ('{}', None), ('[1]', None),
+])
+def test_single_effect_group_uses_declared_card_inventory(monkeypatch, raw, expected):
+    _, search = _setup(monkeypatch, [('a', 'CostAdd', 7), ('b', 'LessonAdd', 37)])
+    search['effectGroupIds'] = '["group"]'
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert rule.target_known and rule.effect_groups == ('group',)
+        card = cast(Any, SimpleNamespace(category='ProduceCardCategory_ActiveSkill', _effect_group_ids=raw))
+        assert rule.matches(card) is expected
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('raw', ['["a", "b"]', 'invalid-json', '{}'])
+def test_multiple_or_malformed_search_groups_remain_unknown(monkeypatch, raw):
+    _, search = _setup(monkeypatch, [('a', 'CostAdd', 7), ('b', 'LessonAdd', 37)])
+    search['effectGroupIds'] = raw
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert not rule.target_known
+        card = cast(Any, SimpleNamespace(category='ProduceCardCategory_ActiveSkill', _effect_group_ids='["a", "b"]'))
+        assert rule.matches(card) is None
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()

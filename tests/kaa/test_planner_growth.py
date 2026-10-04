@@ -208,3 +208,24 @@ def test_growth_gain_and_extra_fee_are_evaluated_together(monkeypatch):
     assert costs.play_cost(state, card) == (5, 0)
     assert result.projected_output == result.confirmed_output == 15
     assert simulate_play(state, card).hp == 95
+
+
+
+@pytest.mark.parametrize('groups,fee,output,confirmed,affordable', [
+    ('["strong"]', 11, 47, 47, False),
+    ('["other"]', 4, 10, 10, True),
+    (None, 4, 10, 0, None),
+])
+def test_effect_group_filter_controls_growth_cost_and_output_together(
+        monkeypatch, groups, fee, output, confirmed, affordable):
+    rule = _rule(green_changes=(7,), lesson_changes=(37,), output_known=True,
+                 effect_groups=('strong',))
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: rule)
+    card = _card(green=4, effects=(_output(),))
+    card._effect_group_ids = groups
+    state = _state(hp=4)
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert costs.play_cost(state, card) == (fee, 0)
+    assert result.projected_output == output and result.confirmed_output == confirmed
+    assert can_afford_play(state, card) is affordable
+    assert card.stamina == 4 and card.play_effects[0].produce_exam_effect.effect_value1 == 10

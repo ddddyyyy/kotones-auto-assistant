@@ -1,10 +1,24 @@
 """Conservative growth targets and stamina-cost changes from master data."""
 from dataclasses import dataclass
 from functools import lru_cache
+import json
 
 from ._util import parse_id_list, register_cache_clear
 from .skill_card import SkillCard, load_exam_effects
 from .sqlite import select, select_many
+
+
+def _effect_groups(raw: str | None) -> tuple[str, ...] | None:
+    """Absent/malformed metadata is not a complete empty group inventory."""
+    if raw is None or raw == '':
+        return None
+    try:
+        values = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values):
+        return None
+    return tuple(values)
 
 
 @dataclass(frozen=True)
@@ -17,6 +31,7 @@ class CardGrowthRule:
     output_changed: bool = True
     lesson_changes: tuple[int, ...] = ()
     output_known: bool = False
+    effect_groups: tuple[str, ...] | None = ()
 
     def matches(self, card: SkillCard) -> bool | None:
         category = getattr(card, 'category', None)
@@ -25,6 +40,17 @@ class CardGrowthRule:
                 return False
         elif self.categories:
             return None
+        if self.effect_groups is None:
+            return None
+        if self.effect_groups:
+            # Multiple search groups need independently verified AND/OR rules.
+            if len(self.effect_groups) != 1:
+                return None
+            card_groups = _effect_groups(getattr(card, '_effect_group_ids', None))
+            if card_groups is None:
+                return None
+            if self.effect_groups[0] not in card_groups:
+                return False
         return True if self.target_known else None
 
 
@@ -35,10 +61,11 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
         return CardGrowthRule()
     search = select('SELECT * FROM ProduceCardSearch WHERE id = ?', effect._produce_card_search_id or '')
     categories = tuple(parse_id_list(search['cardCategories'])) if search else ()
+    groups = _effect_groups(search['effectGroupIds']) if search else None
     target_known = bool(search) and all((
         search['cardPositionType'] == 'ProduceCardPositionType_DeckAll',
         not parse_id_list(search['cardRarities']), not parse_id_list(search['produceCardIds']),
-        not parse_id_list(search['upgradeCounts']), not parse_id_list(search['effectGroupIds']),
+        not parse_id_list(search['upgradeCounts']), groups is not None and len(groups) <= 1,
         search['planType'] in {'', 'ProducePlanType_Unknown'},
         search['cardStatusType'] in {'', 'ProduceCardSearchStatusType_Unknown'},
         search['orderType'] in {'', 'ProduceCardOrderType_Unknown'},
@@ -99,7 +126,7 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
             }:
                 known = False
     return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known,
-                          output_changed, tuple(lesson), output_known)
+                          output_changed, tuple(lesson), output_known, groups)
 
 
 register_cache_clear(get_card_growth_rule.cache_clear)
