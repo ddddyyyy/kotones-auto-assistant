@@ -184,3 +184,14 @@ def test_block_growth_loads_with_lesson_count_without_changing_cost(monkeypatch,
         assert rule.output_known and rule.costs_known
     finally:
         card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('kind,field', [('ReviewAdd', 'review_changes'), ('FullPowerPointAdd', 'full_power_changes')])
+def test_resource_growth_master_data_has_known_output_and_payment(monkeypatch, kind, field):
+    _setup(monkeypatch, [('a', kind, 2), ('b', 'CostPenetrateAdd', 2)])
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert getattr(rule, field) == (2,)
+        assert rule.output_known and rule.costs_known and rule.red_changes == (2,)
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()

@@ -323,3 +323,68 @@ def test_unknown_block_trigger_invalidates_old_balance(monkeypatch):
     after = simulate_play(replace(_state(hp=1, growth=()), genki=3), _card(green=0, effects=(
         _output(ProduceExamEffectType.ExamBlock, 3),)))
     assert after.genki == 3 and not after.genki_known
+
+
+@pytest.mark.parametrize('kind,field,name', [
+    (ProduceExamEffectType.ExamReview, 'review_changes', 'review'),
+    (ProduceExamEffectType.ExamFullPowerPoint, 'full_power_changes', 'full_power_point'),
+])
+def test_resource_growth_updates_search_balance_without_modifying_card_or_hud(monkeypatch, kind, field, name):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(**{field: (2,)}, output_known=True))
+    state = replace(_state(hp=100), projected_effect_values=((name, 0),), observed_effect_values=((name, 0),))
+    effect = _output(kind, 3)
+    after = simulate_play(state, _card(green=0, effects=(effect,)))
+    assert dict(after.effect_values_for_planning)[name] == 5
+    assert dict(after.observed_effect_values)[name] == 0
+    assert effect.produce_exam_effect.effect_value1 == 3
+    if name == 'full_power_point':
+        assert after.anomaly.full_power_points == after.anomaly.cumulative_full_power_points == 5
+    else:
+        assert after.buffs.review == 5
+
+
+def test_review_growth_is_applied_before_later_reduction_and_cost_is_paid_first(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(review_changes=(2,), output_known=True))
+    state = replace(_state(hp=100), buffs=ExamBuffState(review=2), projected_effect_values=(('review', 2),))
+    card = _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamReview, 3),
+        _output(ProduceExamEffectType.ExamReviewReduce, 6),
+    ))
+    card.cost_type = 'ExamCostType_ExamReview'
+    card.cost_value = 2
+    after = simulate_play(state, card)
+    assert after.buffs.review == 0 and dict(after.effect_values_for_planning)['review'] == 0
+
+
+@pytest.mark.parametrize('active', [True, False])
+def test_review_growth_known_and_unknown_propagate_to_same_card_conversion(monkeypatch, active):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(review_changes=(2,), output_known=True))
+    state = replace(_state(hp=100, growth=(('growth', active),)), projected_effect_values=(('review', 0),))
+    card = _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamReview, 3),
+        _output(ProduceExamEffectType.ExamLessonDependExamReview, 1000),
+    ))
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert result.projected_output == (5 if active else 3)
+    assert result.confirmed_output == (5 if active else 0)
+    after = simulate_play(state, card)
+    assert dict(after.effect_values_for_planning)['review'] == (5 if active else None)
+
+
+def test_in_card_review_growth_timing_remains_unknown(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(review_changes=(2,), output_known=True))
+    grant = _output(ProduceExamEffectType.ExamAddGrowEffect, 0)
+    grant.produce_exam_effect._id = 'growth'
+    state = replace(_state(hp=100, growth=()), projected_effect_values=(('review', 0),))
+    after = simulate_play(state, _card(green=0, effects=(grant, _output(ProduceExamEffectType.ExamReview, 3))))
+    assert after.buffs.review == 3 and dict(after.effect_values_for_planning)['review'] is None
+
+
+def test_inactive_resource_effect_does_not_invalidate_known_balance(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import memory
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.INACTIVE)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', lambda *_: TriggerVerdict.INACTIVE)
+    state = replace(_state(hp=100), projected_effect_values=(('review', 0),))
+    after = simulate_play(state, _card(green=0, effects=(_output(ProduceExamEffectType.ExamReview, 3),)))
+    assert dict(after.effect_values_for_planning)['review'] == 0

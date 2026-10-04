@@ -62,12 +62,16 @@ def projected_growth_output(
             count += sum(rule.lesson_count_changes)
         elif kind == ProduceExamEffectType.ExamBlock:
             value += sum(rule.block_changes)
+        elif kind == ProduceExamEffectType.ExamReview:
+            value += sum(rule.review_changes)
+        elif kind == ProduceExamEffectType.ExamFullPowerPoint:
+            value += sum(rule.full_power_changes)
         elif kind in {
             ProduceExamEffectType.ExamLessonDependBlock,
             ProduceExamEffectType.ExamLessonDependExamCardPlayAggressive,
             ProduceExamEffectType.ExamLessonDependExamReview,
         } and not (rule.lesson_changes or rule.lesson_count_changes):
-            # Block growth changes the simulated resource, not this coefficient.
+            # Resource growth changes the simulated balance, not this coefficient.
             pass
         else:
             known = False

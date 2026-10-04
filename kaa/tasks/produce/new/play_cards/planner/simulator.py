@@ -41,6 +41,43 @@ def can_afford_play(state: BattleState, card: SkillCard) -> bool | None:
     return None
 
 
+def _growth_adjusted_resource_card(state: BattleState, card: SkillCard) -> tuple[SkillCard, set[str]]:
+    """Copy search-only resource segments before memory applies ordered effects."""
+    adjusted = copy(card)
+    adjusted.play_effects = []
+    growth = list(state.projected_card_growth)
+    uncertain: set[str] = set()
+    resources = {
+        ProduceExamEffectType.ExamReview: 'review',
+        ProduceExamEffectType.ExamFullPowerPoint: 'full_power_point',
+    }
+    for play_effect in getattr(card, 'play_effects', ()):
+        effect = play_effect.produce_exam_effect
+        if (
+            effect is not None and effect.effect_type in resources
+            and evaluate_trigger_id(getattr(play_effect, '_produce_exam_trigger_id', ''), state)
+            != TriggerVerdict.INACTIVE
+        ):
+            value, _count, known = projected_growth_output(
+                replace(state, projected_card_growth=tuple(growth)), card,
+                effect.effect_type, effect.effect_value1 or 0, 1,
+                applied_count=len(state.projected_card_growth),
+            )
+            if not known:
+                uncertain.add(resources[effect.effect_type])
+            segment = copy(play_effect)
+            segment.produce_exam_effect = copy(effect)
+            segment.produce_exam_effect.effect_value1 = int(value)
+            adjusted.play_effects.append(segment)
+        else:
+            adjusted.play_effects.append(play_effect)
+        if effect is not None and effect.effect_type == ProduceExamEffectType.ExamAddGrowEffect:
+            verdict = evaluate_trigger_id(getattr(play_effect, '_produce_exam_trigger_id', ''), state)
+            if verdict != TriggerVerdict.INACTIVE:
+                growth.append((getattr(effect, '_id', ''), verdict == TriggerVerdict.ACTIVE))
+    return adjusted, uncertain
+
+
 def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     """Return the state after playing one card, for ordering comparisons.
 
@@ -48,7 +85,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     Random draws and item triggers remain outside the shallow search.
     """
     memory = BattleMemory(anomaly=state.anomaly, buffs=state.buffs)
-    memory.record_play(card, state)
+    resource_card, growth_uncertain_balances = _growth_adjusted_resource_card(state, card)
+    memory.record_play(resource_card, state)
     added_plays = (
         memory.anomaly.extra_play_count - state.anomaly.extra_play_count
     )
@@ -81,7 +119,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         ProduceExamEffectType.ExamStaminaRecoverRestriction: 'hp_recovery',
     }
     growth = list(state.projected_card_growth)
-    uncertain_balances: set[str] = set()
+    uncertain_balances = growth_uncertain_balances
     resource_effects = {
         ProduceExamEffectType.ExamLessonBuff: 'lesson_buff',
         ProduceExamEffectType.ExamLessonBuffReduce: 'lesson_buff',

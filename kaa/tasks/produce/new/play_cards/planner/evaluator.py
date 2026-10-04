@@ -283,6 +283,8 @@ class EffectHeuristicEvaluator:
             if kind in self._DIRECT | {
                 ProduceExamEffectType.ExamBlock,
                 ProduceExamEffectType.ExamBlockFix,
+                ProduceExamEffectType.ExamReview,
+                ProduceExamEffectType.ExamFullPowerPoint,
                 ProduceExamEffectType.ExamLessonFullPowerPoint,
                 ProduceExamEffectType.ExamMultipleEnthusiasticLesson,
                 ProduceExamEffectType.ExamMultipleLessonBuffLesson,
