@@ -22,6 +22,7 @@ from kotonebot import action, Interval, Countdown, device, image, sleep, ocr, co
 from kotonebot.backend.loop import Loop
 from kotonebot import logging
 from kotonebot.core import AnyOf
+from kotonebot.backend.color import find as find_color
 from kotonebot.backend.image import find as find_template
 from kotonebot.backend.image import find_all as find_all_templates
 
@@ -202,10 +203,31 @@ class SelectedCardPreviewGate:
         self.confirmed_x = rect.x1
 
 
+def _selected_card_preview_available(screen: MatLike, rect: Rect) -> bool | None:
+    """Reuse the hand's disabled-letter color on the raised selected card."""
+    # Selected cards lift their letter out of BoxCardLetter. Anchor this
+    # search to the current SELECT label, rather than a remembered hand slot.
+    box = Rect(rect.center.x - 24, rect.y1 - 110, 48, 100)
+    if box.x1 < 0 or box.y1 < 0 or box.x2 > screen.shape[1] or box.y2 > screen.shape[0]:
+        return None
+    letters = [
+        match.rect
+        for template in (R.InProduce.A, R.InProduce.M, R.InProduce.T)
+        for match in find_all_templates(screen, template.template, rect=box)
+        if abs(match.rect.center.x - rect.center.x) <= 10
+    ]
+    if len(letters) != 1:
+        return None  # Missing/ambiguous markers do not prove unavailability.
+    return find_color(screen, '#7a7d7d', rect=letters[0]) is None
+
+
 def _confirm_selected_card_preview(screen: MatLike) -> bool:
     """Confirm the observed SELECT label without switching to another hand card."""
     rect = _selected_card_preview_rect(screen)
     if rect is None:
+        return False
+    if _selected_card_preview_available(screen, rect) is False:
+        logger.debug('Selected skill card preview is unavailable; deferring confirmation.')
         return False
     device.click(rect)
     logger.info('Confirmed selected skill card preview.')
