@@ -44,22 +44,33 @@ def _has_upgrade_marker(img: MatLike, letter_rect: Rect) -> bool:
         & (marker[:, :, 1] < 170)
         & (marker[:, :, 0] < 210)
     )
-    _, _, stats, _ = cv2.connectedComponentsWithStats(red.astype('uint8'))
-    for x, y, width, height, area in stats[1:]:
-        if not (12 <= width <= 32 and 12 <= height <= 32 and area >= 100):
-            continue
-        shape = red[y:y+height, x:x+width]
-        # Card artwork and orange backgrounds can pass the color/area test.
-        # A plus has two central strokes with mostly empty outer corners.
-        quarter_w, quarter_h = width // 4, height // 4
-        corners = (
-            shape[:quarter_h, :quarter_w], shape[:quarter_h, -quarter_w:],
-            shape[-quarter_h:, :quarter_w], shape[-quarter_h:, -quarter_w:],
-        )
-        if (shape[height // 2, :].mean() >= 0.8
-                and shape[:, width // 2].mean() >= 0.75
-                and sum(corner.mean() for corner in corners) / 4 < 0.25):
-            return True
+    # Unavailable cards dim both the pink cross and its white outline.
+    # Keep the normal mask unchanged; only supplement locally dark crosses.
+    channels = marker.astype('int16')
+    dim_red = (
+        (channels[:, :, 2] > 80) & (channels[:, :, 2] < 160)
+        & (channels[:, :, 2] - channels[:, :, 1] > 35)
+        & (channels[:, :, 2] - channels[:, :, 0] > 15)
+    )
+    for mask, dimmed in ((red, False), (dim_red, True)):
+        _, _, stats, _ = cv2.connectedComponentsWithStats(mask.astype('uint8'))
+        for x, y, width, height, area in stats[1:]:
+            if not (12 <= width <= 32 and 12 <= height <= 32 and area >= 100):
+                continue
+            if dimmed and max(cv2.mean(marker[max(0, y-2):y+height+2, max(0, x-2):x+width+2])[:3]) > 180:
+                continue
+            shape = mask[y:y+height, x:x+width]
+            # Card artwork and orange backgrounds can pass the color/area test.
+            # A plus has two central strokes with mostly empty outer corners.
+            quarter_w, quarter_h = width // 4, height // 4
+            corners = (
+                shape[:quarter_h, :quarter_w], shape[:quarter_h, -quarter_w:],
+                shape[-quarter_h:, :quarter_w], shape[-quarter_h:, -quarter_w:],
+            )
+            if (shape[height // 2, :].mean() >= 0.8
+                    and shape[:, width // 2].mean() >= 0.75
+                    and sum(corner.mean() for corner in corners) / 4 < 0.25):
+                return True
     return False
 
 
