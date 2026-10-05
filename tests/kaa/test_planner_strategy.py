@@ -1091,3 +1091,55 @@ def test_diagnostic_fallback_is_recorded_without_commit(monkeypatch, tmp_path, m
     assert len(events)==1 and events[0]['event']=='candidate_screening'
     assert events[0]['outcome']==reason and events[0]['decision_sequence'] is None
     assert strategy._decision_trace.pending is None
+
+
+@pytest.mark.parametrize('modifier', ['half', 'unknown', None])
+def test_hold_ranking_does_not_certify_same_turn_budgets_in_future(modifier):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    class CaptureEvaluator:
+        future = None
+        def evaluate(self, card, state):
+            self.future = state
+            return CardEvaluation(card._id, 1, EvaluationConfidence.LOW, 'future')
+    evaluator = CaptureEvaluator()
+    strategy = PlannerStrategy(evaluator)
+    state = BattleState(remaining_turns=3, hp=2, genki=0,
+        observed_remaining_turns=3, observed_hp=2,
+        observed_effect_values=(('review', 5),), projected_effect_values=(('review', 7),),
+        projected_stamina_consumption=modifier,
+        buffs=ExamBuffState(review=7, parameter_buff_turns=2))
+    strategy._last_move_state = state
+    card = _planner_hand('fee', stamina=3).card
+    assert strategy.rank_move_cards([card]) == [0]
+    future = evaluator.future
+    assert future is not None
+    assert future.remaining_turns == 2 and not future.remaining_turns_known
+    assert not future.hp_known and not future.genki_known
+    assert future.buffs.review == 7 and future.buffs.parameter_buff_turns == 1
+    assert dict(future.effect_values_for_planning)['review'] is None
+    assert future.projected_stamina_consumption == ('unknown' if modifier else None)
+    assert can_afford_play(future, card) is None
+    assert state.hp_known and state.buffs.parameter_buff_turns == 2
+    assert state.projected_stamina_consumption == modifier
+    assert future.observed_remaining_turns == 3 and future.observed_hp == 2
+
+
+def test_hold_ranking_keeps_growth_uncertain_instead_of_erasing_it(monkeypatch):
+    from kaa.db.card_growth import CardGrowthRule
+    from kaa.tasks.produce.new.play_cards.planner import costs
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: CardGrowthRule(
+        target_known=True, costs_known=True, green_changes=(1,)))
+    class CaptureEvaluator:
+        future = None
+        def evaluate(self, card, state):
+            self.future = state
+            return CardEvaluation(card._id, 1, EvaluationConfidence.LOW, 'future')
+    evaluator = CaptureEvaluator()
+    strategy = PlannerStrategy(evaluator)
+    strategy._last_move_state = BattleState(remaining_turns=3, hp=100, genki=0,
+        anomaly=AnomalyState(full_power_points=7), projected_card_growth=(('growth', True),))
+    assert strategy.rank_move_cards([_planner_hand('fee').card]) == [0]
+    future = evaluator.future
+    assert future is not None and future.projected_card_growth == (('growth', False),)
+    assert future.anomaly.full_power_points == 7
+    assert can_afford_play(future, _planner_hand('fee').card) is None

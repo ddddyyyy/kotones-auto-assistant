@@ -238,7 +238,7 @@ class PlannerStrategy(AbstractBattleStrategy):
             return None
         if self._pending_play is not None:
             self._pending_play = replace(self._pending_play, move_dialog_seen=True)
-        anomaly = BattleMemory._advance_anomaly_turn(self._memory.anomaly)
+        anomaly = BattleMemory._advance_anomaly_turn(state.anomaly)
         if state.archetype is ProduceExamEffectType.ExamFullPower:
             anomaly = replace(
                 anomaly,
@@ -254,7 +254,19 @@ class PlannerStrategy(AbstractBattleStrategy):
             hand_card_ids=(),
             hand_size=None,
             anomaly=anomaly,
-            buffs=self._memory.buffs,
+            buffs=replace(
+                state.buffs,
+                parameter_buff_turns=max(0, state.buffs.parameter_buff_turns - 1),
+                parameter_buff_multiple_turns=max(0, state.buffs.parameter_buff_multiple_turns - 1),
+            ),
+            # Hold sorting is a future estimate, not the next turn's HUD. We
+            # have no expiry/instance evidence for these same-turn projections.
+            remaining_turns_known=False,
+            hp_known=False,
+            genki_known=False,
+            projected_effect_values=tuple((name, None) for name, _ in state.effect_values_for_planning),
+            projected_stamina_consumption='unknown' if state.projected_stamina_consumption else None,
+            projected_card_growth=tuple((key, False) for key, _active in state.projected_card_growth),
         )
         scores: list[float | None] = []
         for card in cards:
