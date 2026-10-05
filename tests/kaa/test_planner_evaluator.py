@@ -1484,3 +1484,35 @@ def test_same_name_slots_keep_individual_preview_and_leave_shared_snapshot_clean
         previews.append(EffectHeuristicEvaluator().evaluate(card, local).projected_output)
     assert previews == [300, 140]
     assert state.observed_card_output is None
+
+
+@pytest.mark.parametrize('case', ['multiple', 'dependent', 'unknown', 'chain', 'search', 'growth'])
+def test_ineligible_card_preview_skips_image_properties(monkeypatch, case):
+    from kaa.tasks.produce.new.play_cards.planner import visible_output
+    from kaa.tasks.produce.new.play_cards.planner.strategy import PlannerStrategy
+    from kaa.tasks.produce.new.play_cards.ui import CardGameObject
+    effects = [_effect(ProduceExamEffectType.ExamLesson, 6)]
+    if case == 'multiple':
+        effects.append(_effect(ProduceExamEffectType.ExamLesson, 5))
+    if case == 'dependent':
+        effects.append(_effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    if case == 'chain':
+        effects[0].produce_exam_effect._chain_produce_exam_effect_id = 'unparsed-chain'
+    if case == 'unknown':
+        monkeypatch.setattr(visible_output, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    card = cast(SkillCard, _card('ineligible', *effects))
+    state = BattleState(remaining_turns=3, hp=20, genki=12,
+        projected_effect_values=() if case == 'search' else None,
+        projected_card_growth=(('unparsed', False),) if case == 'growth' else ())
+    class Hand:
+        card: SkillCard
+
+        @property
+        def has_growth_marker(self):
+            raise AssertionError('unsupported preview must not inspect the image')
+        @property
+        def output_preview(self):
+            raise AssertionError('unsupported preview must not request OCR')
+    hand = Hand()
+    hand.card = card
+    assert PlannerStrategy._candidate_state(state, cast(CardGameObject, hand)) is state

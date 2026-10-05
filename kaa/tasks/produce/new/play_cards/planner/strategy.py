@@ -26,6 +26,7 @@ from .play_evidence import PlayFeedbackEvidence
 from .profiles import profile_for
 from .simulator import can_afford_play, play_cost, simulate_play
 from .state import BattleState
+from .visible_output import supports_current_preview
 
 if TYPE_CHECKING:
     from kaa.db.skill_card import SkillCard
@@ -507,13 +508,9 @@ class PlannerStrategy(AbstractBattleStrategy):
 
     @staticmethod
     def _candidate_state(state: BattleState, hand: 'CardGameObject') -> BattleState:
-        if hand.card is None or not getattr(hand, 'has_growth_marker', False):
+        if hand.card is None or not supports_current_preview(hand.card, state):
             return state
-        if not any(
-            effect.produce_exam_effect is not None
-            and effect.produce_exam_effect.effect_type == ProduceExamEffectType.ExamLesson
-            for effect in hand.card.play_effects
-        ):
+        if not getattr(hand, 'has_growth_marker', False):
             return state
         preview = getattr(hand, 'output_preview', None)
         if preview is None or preview.count is None:
