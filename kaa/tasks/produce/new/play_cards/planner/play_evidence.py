@@ -1,4 +1,4 @@
-"""Opt-in evidence for paid plays with no observable state change."""
+"""Opt-in raw frames for unconfirmed card plays."""
 
 import json
 import os
@@ -11,6 +11,12 @@ from kotonebot import device, logging
 
 logger = logging.getLogger(__name__)
 EVIDENCE_ENV = 'KAA_PLAY_EVIDENCE_DIR'
+UNCONFIRMED_EVIDENCE = frozenset({
+    'paid_play_observably_unchanged',
+    'insufficient_evidence',
+    'turn_advanced_without_play_observation',
+    'battle_ended_without_observation',
+})
 
 
 class PlayFeedbackEvidence:
@@ -48,7 +54,7 @@ class PlayFeedbackEvidence:
 
     def feedback(self, evidence: str, screen: MatLike | None) -> None:
         pending, self.pending = self.pending, None
-        if pending is None or evidence != 'paid_play_observably_unchanged':
+        if pending is None or evidence not in UNCONFIRMED_EVIDENCE:
             return
         self.saved_count += 1
         token, card_id, before, after = pending
@@ -63,9 +69,15 @@ class PlayFeedbackEvidence:
                     raise OSError('PNG encoding failed')
                 Path(f'{prefix}-{name}.png').write_bytes(encoded.tobytes())
             Path(f'{prefix}.json').write_text(
-                json.dumps({'card_id': card_id, 'evidence': evidence}, ensure_ascii=False),
+                json.dumps({
+                    'card_id': card_id,
+                    'evidence': evidence,
+                    'after_click_captured': after is not None,
+                    'feedback_captured': screen is not None,
+                    'after_click_is_settled_observation': False,
+                }, ensure_ascii=False),
                 encoding='utf-8',
             )
-            logger.info('Planner unchanged-play evidence: card=%s prefix=%s', card_id, prefix)
+            logger.info('Planner unconfirmed-play evidence: card=%s prefix=%s', card_id, prefix)
         except (OSError, cv2.error):
             logger.warning('Could not save play feedback evidence.', exc_info=True)
