@@ -684,7 +684,7 @@ def test_inferred_full_power_survives_missing_hud_icon_for_payoff_card():
     spurt = SkillCard.from_id('p_card-03-act-0_021')
     assert spurt is not None
     state = BattleState(
-        remaining_turns=2, hp=12, genki=9, is_exam=True,
+        remaining_turns=2, hp=12, genki=9, is_exam=True, exam_score_percent=100,
         playable_count=3,
         archetype=ProduceExamEffectType.ExamFullPower,
         plan_type=ProducePlanType.Plan3,
@@ -1364,3 +1364,42 @@ def test_same_card_point_gain_does_not_prove_complete_cumulative_history():
         _effect(ProduceExamEffectType.ExamLessonFullPowerPoint, 4, value2=2000))
     result = EffectHeuristicEvaluator().evaluate(cast(Any, card), BattleState(remaining_turns=3, hp=100, genki=0))
     assert result.projected_output == 10 and result.confirmed_output == 0
+
+
+@pytest.mark.parametrize('percent,expected,confirmed', [
+    (100, 24, 24), (468, 112.32, 112.32), (0, 0, 0),
+    (None, 24, 0), (-1, 24, 0),
+])
+def test_exam_percentage_scales_scoring_and_missing_value_cannot_prove_output(
+    percent, expected, confirmed,
+):
+    card = _card('exam-output', _effect(ProduceExamEffectType.ExamLesson, 6, count=2))
+    state = BattleState(
+        remaining_turns=3, hp=20, genki=12, is_exam=True,
+        exam_score_percent=percent,
+        anomaly=AnomalyState(stance=AnomalyStance.AGGRESSIVE),
+    )
+    evaluation = EffectHeuristicEvaluator().evaluate(cast(SkillCard, card), state)
+    assert evaluation.projected_output == pytest.approx(expected)
+    assert evaluation.confirmed_output == pytest.approx(confirmed)
+
+
+def test_lesson_output_ignores_exam_percentage():
+    card = _card('lesson-output', _effect(ProduceExamEffectType.ExamLesson, 6, count=2))
+    state = BattleState(remaining_turns=3, hp=20, genki=12, exam_score_percent=468)
+    evaluation = EffectHeuristicEvaluator().evaluate(cast(SkillCard, card), state)
+    assert evaluation.projected_output == evaluation.confirmed_output == 12
+
+
+def test_same_turn_search_retains_observed_exam_percentage():
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    recovery = _card('recovery', _effect(ProduceExamEffectType.ExamStaminaRecoverFix, 2))
+    output = _card('output', _effect(ProduceExamEffectType.ExamLesson, 10))
+    state = BattleState(
+        remaining_turns=3, hp=20, genki=12, is_exam=True,
+        exam_score_percent=468, playable_count=2,
+    )
+    after = simulate_play(state, cast(SkillCard, recovery))
+    assert after.remaining_turns == state.remaining_turns
+    evaluation = EffectHeuristicEvaluator().evaluate(cast(SkillCard, output), after)
+    assert evaluation.projected_output == evaluation.confirmed_output == pytest.approx(46.8)

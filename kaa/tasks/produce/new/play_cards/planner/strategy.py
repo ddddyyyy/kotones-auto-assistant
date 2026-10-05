@@ -248,6 +248,7 @@ class PlannerStrategy(AbstractBattleStrategy):
         future = replace(
             state,
             remaining_turns=max(1, state.remaining_turns - 1),
+            exam_score_percent=None,
             score_gap=None,
             score_target_is_final=None,
             playable_count=2 if anomaly.full_power_active else 1,
@@ -596,6 +597,10 @@ class PlannerStrategy(AbstractBattleStrategy):
         score_gap = fetch_score_gap() if fetch_score_gap is not None else None
         fetch_target_stage = None if self._is_exam else getattr(ctx, 'fetch_score_target_is_final', None)
         score_target_is_final = fetch_target_stage() if fetch_target_stage is not None else None
+        fetch_percent = getattr(ctx, 'fetch_exam_score_percent', None) if self._is_exam else None
+        exam_score_percent = fetch_percent() if fetch_percent is not None else None
+        if self._is_exam:
+            logger.debug('Planner exam current attribute percentage: %s', exam_score_percent)
         fetch_standings = None if not self._is_exam else getattr(ctx, 'fetch_exam_standings', None)
         standings = fetch_standings() if fetch_standings is not None else None
         current_score = standings.own_score if standings is not None else None
@@ -663,6 +668,7 @@ class PlannerStrategy(AbstractBattleStrategy):
             score_gap=score_gap,
             score_target_is_final=score_target_is_final,
             is_exam=self._is_exam,
+            exam_score_percent=exam_score_percent,
             playable_count=max(
                 1,
                 1

@@ -279,6 +279,8 @@ class EffectHeuristicEvaluator:
             effect_turn = effect.effect_turn or 0
             duration = effect_turn if effect_turn > 0 else turns
             output_inputs_known = not uncertain_output_state
+            if state.is_exam:
+                output_inputs_known &= state.exam_score_percent is not None and state.exam_score_percent >= 0
             effect_state = state
             if kind in self._DIRECT | {
                 ProduceExamEffectType.ExamBlock,
@@ -623,7 +625,11 @@ class EffectHeuristicEvaluator:
 
     @staticmethod
     def _output_multiplier(state: BattleState) -> float:
-        multiplier = 1.0
+        multiplier = (
+            state.exam_score_percent / 100.0
+            if state.is_exam and state.exam_score_percent is not None
+            and state.exam_score_percent >= 0 else 1.0
+        )
         if state.buffs.parameter_buff_turns > 0:
             multiplier *= 1.5
         if state.buffs.parameter_buff_multiple_turns > 0:

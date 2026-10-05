@@ -123,6 +123,29 @@ def _read_exam_score(
     return None
 
 
+def read_exam_score_percent(screen: MatLike) -> int | None:
+    """Read a percentage twice from this crop; conflicts stay unknown."""
+    box = R.InProduce.InExam.BoxScorePercent
+    crop = screen[box.y1:box.y2, box.x1:box.x2]
+    if crop.size == 0:
+        return None
+    white = (crop.min(axis=2) > 230).astype('uint8') * 255
+    readings: list[int] = []
+    try:
+        for image in (crop, white):
+            results = en().ocr(image)
+            if len(results) != 1 or results[0].confidence < 0.98:
+                return None
+            match = re.fullmatch(r'([0-9]{1,4})%', results[0].text.replace(' ', ''))
+            if match is None:
+                return None
+            readings.append(int(match.group(1)))
+    except Exception:
+        logger.debug('Could not verify exam score percentage.', exc_info=True)
+        return None
+    return readings[0] if readings[0] == readings[1] else None
+
+
 def read_exam_standings(screen: MatLike) -> ExamStandings | None:
     """Read only a uniquely identified player tile and the first-place score."""
     own_box = _own_exam_score_box(screen)
@@ -347,6 +370,10 @@ class LessonBattleContext:
     def fetch_exam_stamina(self) -> int | None:
         """Read genki from the lower resource gauge in ranked exams."""
         return _fetch_int(BOX_EXAM_GENKI, fallback_raw=True, verify_genki=True, screen=self.fetch_screen())
+
+    @_observe_once
+    def fetch_exam_score_percent(self) -> int | None:
+        return read_exam_score_percent(self.fetch_screen())
 
     @_observe_once
     def fetch_exam_standings(self) -> ExamStandings | None:

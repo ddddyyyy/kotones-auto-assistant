@@ -86,6 +86,8 @@ class BattleState:
     score_target_is_final: bool | None = None
     """True when the visible lesson target is PERFECT, False for CLEAR."""
     is_exam: bool = False
+    exam_score_percent: int | None = None
+    """Current exam attribute percentage from the same HUD, never a future-turn value."""
     playable_count: int = 1
     archetype: ProduceExamEffectType | None = None
     plan_type: ProducePlanType | None = None

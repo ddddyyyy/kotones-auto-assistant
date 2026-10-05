@@ -226,6 +226,20 @@
           "y2": 204
         }
       }
+    },
+    "cd6bcbda-ddd4-4f4d-98bb-59db5ccd60f2": {
+      "type": "hint-box",
+      "name": "InProduce.InExam.BoxScorePercent",
+      "displayName": "考试当前属性评分百分比",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 115,
+          "y1": 82,
+          "x2": 222,
+          "y2": 123
+        }
+      }
     }
   }
 }
