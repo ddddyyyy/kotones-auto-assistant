@@ -1,0 +1,57 @@
+{
+  "version": 3,
+  "definitions": {
+    "ce33ff89-f15f-480d-9e30-93f06c42a16e": {
+      "type": "hint-box",
+      "name": "InProduce.BoxCompactDrinks",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 20,
+          "y1": 1150,
+          "x2": 330,
+          "y2": 1244
+        }
+      }
+    },
+    "e38102de-8e6c-4afc-930e-7488db7019c0": {
+      "type": "hint-box",
+      "name": "InProduce.BoxCompactDrink1",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 31,
+          "y1": 1170,
+          "x2": 91,
+          "y2": 1230
+        }
+      }
+    },
+    "dd5be4b6-2ca9-48dd-bfb2-ae0393bf1f9a": {
+      "type": "hint-box",
+      "name": "InProduce.BoxCompactDrink2",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 116,
+          "y1": 1170,
+          "x2": 176,
+          "y2": 1230
+        }
+      }
+    },
+    "1de6ad00-12f6-46b0-9320-c79d337bd4bf": {
+      "type": "hint-box",
+      "name": "InProduce.BoxCompactDrink3",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 202,
+          "y1": 1170,
+          "x2": 262,
+          "y2": 1230
+        }
+      }
+    }
+  }
+}

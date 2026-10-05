@@ -145,6 +145,38 @@ def match_first_drinks(img: MatLike, delta_threshold: float = 0.7) -> Drink | No
     )
     return drink
 
+
+def _drink_slot_rects(img: MatLike) -> list[RectTuple]:
+    """由三个槽位圆环确认紧凑布局，未确认时沿用原布局。"""
+    compact = [
+        R.InProduce.BoxCompactDrink1.rect,
+        R.InProduce.BoxCompactDrink2.rect,
+        R.InProduce.BoxCompactDrink3.rect,
+    ]
+    x, y, w, h = R.InProduce.BoxCompactDrinks.rect
+    region = img[y:y+h, x:x+w]
+    if region.shape[:2] == (h, w):
+        circles = cv2.HoughCircles(
+            cv2.cvtColor(region, cv2.COLOR_BGR2GRAY),
+            cv2.HOUGH_GRADIENT, 1, 60,
+            param1=100, param2=30, minRadius=28, maxRadius=43,
+        )
+        if circles is not None and all(
+            any(
+                abs(cx + x - (sx + sw / 2)) <= 4
+                and abs(cy + y - (sy + sh / 2)) <= 5
+                for cx, cy, _ in circles[0]
+            )
+            for sx, sy, sw, sh in compact
+        ):
+            return compact
+    return [
+        R.InProduce.BoxDrink1.rect,
+        R.InProduce.BoxDrink2.rect,
+        R.InProduce.BoxDrink3.rect,
+    ]
+
+
 @action('定位考试中出现的所有饮品', screenshot_mode='manual')
 def locate_all_drinks_in_3_drink_slots(img: MatLike) -> list[tuple[Drink, RectTuple]]:
     """
@@ -154,11 +186,7 @@ def locate_all_drinks_in_3_drink_slots(img: MatLike) -> list[tuple[Drink, RectTu
     :return: 若匹配成功，则返回饮品的信息，否则返回 None。
     """
     
-    potential_rects: list[RectTuple] = [
-        R.InProduce.BoxDrink1.rect,
-        R.InProduce.BoxDrink2.rect,
-        R.InProduce.BoxDrink3.rect
-    ]
+    potential_rects = _drink_slot_rects(img)
 
     results = list[tuple[Drink, RectTuple]]()
 
