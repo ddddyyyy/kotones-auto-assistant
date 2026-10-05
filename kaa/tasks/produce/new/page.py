@@ -8,6 +8,7 @@ import numpy as np
 from kaa.db.skill_card import SkillCard
 from kaa.kaa_context import produce_session
 from kotonebot.primitives import Rect
+from kotonebot.backend.image import find as find_template, find_all as find_all_templates
 from kotonebot.core import BoundPrefab, GameObject, AnyOf, Prefab
 from kotonebot.errors import UnrecoverableError
 from kotonebot import logging, device, sleep, Countdown, Loop, cropped, ocr
@@ -177,7 +178,7 @@ class _SceneCheckMixin:
 
         # P道具选择
         logger.verbose("Check PItem select...")
-        if R.InProduce.TextPItem.exists():
+        if R.InProduce.TextPItem.exists() or self._is_selected_pitem_reward():
             return Scene(SceneType.SELECT_PITEM)
 
         # P饮料选择
@@ -191,6 +192,21 @@ class _SceneCheckMixin:
             sleep(0.3)
             device.screenshot()
             return Scene(SceneType.SELECT_DRINK)
+
+    def _is_selected_pitem_reward(self) -> bool:
+        """选中道具后提示文字消失，以同帧的道具边框和领取按钮确认页面。"""
+        screen = device.screenshot()
+        borders = find_all_templates(
+            screen, R.InProduce.PItemRewardBorder.template,
+            rect=R.InProduce.BoxPItemRewardIcons, threshold=0.95, colored=True,
+        )
+        # 至少两个独立图标边框，避免将技能卡或其他奖励弹窗当作 P 道具。
+        if len(borders) < 2:
+            return False
+        return find_template(
+            screen, R.InProduce.AcquireBtnDisabled.template,
+            rect=R.InProduce.BoxPItemRewardClaim, threshold=0.95,
+        ) is not None
 
     def _check_fullscreen_dialogs(self) -> Scene | None:
         # 技能卡自选强化

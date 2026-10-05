@@ -48,6 +48,50 @@
       },
       "prefab_id": "TemplateMatchPrefab",
       "variant_policy": {}
+    },
+    "74ee0a66-4fa6-420e-943c-a850e84772d5": {
+      "name": "InProduce.PItemRewardBorder",
+      "displayName": "P 道具奖励图标下边框",
+      "type": "prefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 297,
+          "y1": 932,
+          "x2": 425,
+          "y2": 949
+        }
+      },
+      "prefab_id": "TemplateMatchPrefab",
+      "variant_policy": {}
+    },
+    "4407813a-b554-484a-9a9f-4741039ab4e0": {
+      "name": "InProduce.BoxPItemRewardIcons",
+      "displayName": "P 道具奖励图标区域",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 150,
+          "y1": 820,
+          "x2": 570,
+          "y2": 955
+        }
+      }
+    },
+    "06ceaf43-08cf-4df6-ae3b-98de6a3843d4": {
+      "name": "InProduce.BoxPItemRewardClaim",
+      "displayName": "P 道具奖励领取按钮区域",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 228,
+          "y1": 1050,
+          "x2": 498,
+          "y2": 1140
+        }
+      }
     }
   }
 }
