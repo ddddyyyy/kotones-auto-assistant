@@ -93,6 +93,10 @@ def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
     green, red, growth_known = projected_growth_payment(state, card)
     if not growth_known:
         return False
+    if (green or red) and 'stamina_consumption_modifier' in state.observed_effects:
+        # The current HUD uses the same glyph for increased/reduced costs.
+        # Neither the base cost nor a later half grant resolves its direction.
+        return False
     if state.projected_effect_values is None or state.projected_stamina_consumption is None:
         return True
     if any(

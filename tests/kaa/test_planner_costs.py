@@ -334,3 +334,30 @@ def test_unknown_restriction_cannot_certify_later_recovery(monkeypatch, kind, ga
     next_state = simulate_play(after, resource_effect_card(gain, 4))
     assert not getattr(next_state, known)
     assert can_afford_play(next_state, card(force=3) if known == 'hp_known' else card(stamina=3)) is None
+
+
+@pytest.mark.parametrize('green, red', [(4, 0), (0, 2), (4, 2)])
+@pytest.mark.parametrize('balance', [0, 30])
+def test_ambiguous_current_modifier_does_not_prove_payment_or_future_balance(green, red, balance):
+    state = BattleState(remaining_turns=3, hp=balance, genki=balance,
+                        observed_effects=frozenset({'stamina_consumption_modifier'}))
+    paid = card(stamina=green, force=red)
+    assert can_afford_play(state, paid) is None
+    after = simulate_play(state, paid)
+    assert not after.hp_known and not after.genki_known
+    assert after.projected_stamina_consumption == 'unknown'
+    assert after.observed_effect_values == state.observed_effect_values
+    assert can_afford_play(after, paid) is None
+
+
+def test_free_grant_does_not_resolve_ambiguous_current_modifier():
+    state = BattleState(remaining_turns=3, hp=20, genki=20,
+                        observed_effects=frozenset({'stamina_consumption_modifier'}))
+    grant = reduction_card(stamina=0)
+    assert can_afford_play(state, grant) is True
+    after = simulate_play(state, grant)
+    assert after.hp_known and after.genki_known
+    assert after.projected_stamina_consumption == 'unknown'
+    assert can_afford_play(after, card(stamina=4)) is None
+    # A fresh observation without the glyph must not inherit old uncertainty.
+    assert can_afford_play(BattleState(remaining_turns=2, hp=20, genki=20), card(stamina=4)) is True

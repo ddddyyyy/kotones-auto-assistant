@@ -99,7 +99,11 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     genki -= genki_spent
     hp = max(0, hp - (green_cost - genki_spent) - red_cost)
 
-    modifier = state.projected_stamina_consumption if state.projected_effect_values is not None else None
+    modifier = (
+        state.projected_stamina_consumption
+        if state.projected_effect_values is not None
+        else 'unknown' if 'stamina_consumption_modifier' in state.observed_effects else None
+    )
     modifier_effects = {
         ProduceExamEffectType.ExamStaminaConsumptionDown,
         ProduceExamEffectType.ExamStaminaConsumptionAdd,

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .feedback import PlayFeedback
     from .state import BattleState
 
-from .costs import play_cost, special_cost_affordability
+from .costs import play_cost, special_cost_affordability, projected_cost_supported
 from .simulator import can_afford_play
 from .trace_provenance import configured_solution, local_code_provenance
 
@@ -157,6 +157,8 @@ class DecisionTrace:
                     if state is not None and card is not None else None,
                     'modeled_green_red': play_cost(state, card)
                     if state is not None and card is not None else None,
+                    'cost_model_supported': projected_cost_supported(state, card)
+                    if state is not None and card is not None else None,
                     'cost_model': 'stance_only_existing_rounding',
                 })
             self._append({
@@ -197,6 +199,7 @@ class DecisionTrace:
                         'modeled_payment': {
                             'green_red': play_cost(state, hand.card),
                             'special_affordable': special_cost_affordability(state, hand.card),
+                            'supported': projected_cost_supported(state, hand.card),
                             'model': 'stance_only_existing_rounding',
                         } if hand.card is not None else None,
                         'customize_ids': getattr(hand.card, 'customize_ids', None),

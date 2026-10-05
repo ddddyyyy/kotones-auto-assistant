@@ -36,6 +36,8 @@ _EFFECT_ASSETS = {
     'concentration': 'exam_examconcentration.webp',
     'lesson_multiplier': 'exam_examlessonvaluemultiple.webp',
     'stamina_consumption_down': 'exam_examstaminaconsumptiondown.webp',
+    # Add/down assets are identical: presence never proves the direction.
+    'stamina_consumption_modifier': 'exam_examstaminaconsumptiondown.webp',
 }
 
 _CONFIDENCE_THRESHOLDS = {
@@ -44,6 +46,7 @@ _CONFIDENCE_THRESHOLDS = {
     'review': 0.80,
     'full_power': 0.65,
     'concentration': 0.80,
+    'stamina_consumption_modifier': 0.80,
 }
 
 
@@ -127,7 +130,7 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
         # right are usually digits, Japanese labels, or P-item artwork.
         if best_confidence >= threshold and best_rect[0] <= 75:
             x, y, width, height = best_rect
-            if effect == 'review':
+            if effect in {'review', 'stamina_consumption_modifier'}:
                 # The same white glyph is also shown on a grey, inactive HUD
                 # diamond. Only the blue, saturated diamond is an active buff.
                 icon = screen[y:y + height, x:x + width]
