@@ -582,7 +582,17 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
         # Sample top, middle and bottom, then return to the chosen card.
         pooled: list[tuple[float, MoveCardOption]] = []
         scanned_viewports = 0
-        positions = (0.0, 0.5, 1.0) if observe_move_scrollbar(device.screenshot()) is not None else (0.0,)
+        scrollbar = observe_move_scrollbar(device.screenshot())
+        if scrollbar is None:
+            # The thumb can precede the track during modal animation. Refresh
+            # both candidates and geometry before treating it as one viewport.
+            sleep(0.2)
+            screen = device.screenshot()
+            options = observe_move_cards(screen)
+            if not options:
+                return None
+            scrollbar = observe_move_scrollbar(screen)
+        positions = (0.0, 0.5, 1.0) if scrollbar is not None else (0.0,)
         for position in positions:
             if len(positions) > 1 and not scroll_to(position):
                 break

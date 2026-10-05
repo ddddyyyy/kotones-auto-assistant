@@ -87,10 +87,12 @@ def observe_move_scrollbar(screen: MatLike) -> MoveScrollbar | None:
         & (blue - green >= 2) & (blue - green <= 6)
         & (green - red >= 6) & (green - red <= 12)
     )
+    # The dark track is translucent: warm stages can lower blue to about 48
+    # and increase green/red spread. Keep the much stricter thumb requirement.
     background = (
-        (blue > 100) & (blue < 140)
+        (blue > 30) & (blue < 140)
         & (abs(blue - green) <= 3)
-        & (abs(green - red) <= 7)
+        & (abs(green - red) <= 12)
     )
     if int((thumb | background).sum()) < len(column) * 0.9 or int(background.sum()) < 15:
         return None
