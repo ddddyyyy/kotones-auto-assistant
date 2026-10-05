@@ -121,6 +121,9 @@ def _evaluate_field_status(
     value: int,
     state: BattleState,
 ) -> bool | None:
+    if status_type == 'ProduceExamFieldStatusType_FullPowerPointGetSumUp':
+        # Inferred cumulative gains have no complete observation ledger yet.
+        return None
     threshold = value if value > 0 else 1
     buffs = state.buffs
     anomaly = state.anomaly

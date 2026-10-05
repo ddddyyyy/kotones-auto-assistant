@@ -315,6 +315,9 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('即时参数')
             elif kind == ProduceExamEffectType.ExamLessonFullPowerPoint:
+                # The running total comes from inferred plays, not a complete
+                # observed gain history. Current points cannot prove this sum.
+                output_inputs_known &= value2 == 0
                 output = (
                     value
                     + effect_state.anomaly.cumulative_full_power_points * value2 / 1000.0

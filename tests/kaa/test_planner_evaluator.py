@@ -1344,3 +1344,23 @@ def test_followup_condition_uses_remaining_parameter_buff_after_payment(monkeypa
     result = EffectHeuristicEvaluator().evaluate(cast(Any, followup), after)
     assert result.projected_output == result.confirmed_output == expected
     assert after.observed_effect_values == state.observed_effect_values
+
+
+@pytest.mark.parametrize('total', [0, 5])
+@pytest.mark.parametrize('coefficient', [0, 2000])
+def test_cumulative_point_output_is_estimated_without_complete_history(total, coefficient):
+    card = _card('cumulative', _effect(ProduceExamEffectType.ExamLessonFullPowerPoint, 4, value2=coefficient))
+    state = BattleState(remaining_turns=3, hp=100, genki=0,
+        anomaly=AnomalyState(full_power_points=5, cumulative_full_power_points=total),
+        observed_effect_values=(('full_power_point', 5),))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.projected_output == 4 + total * coefficient / 1000
+    assert result.confirmed_output == (4 if coefficient == 0 else 0)
+
+
+def test_same_card_point_gain_does_not_prove_complete_cumulative_history():
+    card = _card('gain-and-convert',
+        _effect(ProduceExamEffectType.ExamFullPowerPoint, 3),
+        _effect(ProduceExamEffectType.ExamLessonFullPowerPoint, 4, value2=2000))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), BattleState(remaining_turns=3, hp=100, genki=0))
+    assert result.projected_output == 10 and result.confirmed_output == 0

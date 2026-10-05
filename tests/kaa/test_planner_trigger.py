@@ -338,3 +338,13 @@ def test_conflicting_parameter_buff_number_does_not_confirm_presence():
         observed_effects=frozenset({'parameter_buff'}),
         observed_effect_values=(('parameter_buff', 0),))
     assert evaluate_exam_trigger(_trigger('ProduceExamFieldStatusType_ParameterBuff'), state) == TriggerVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize('total', [0, 50])
+@pytest.mark.parametrize('negated', [False, True])
+def test_cumulative_point_trigger_needs_complete_history_even_with_current_hud(total, negated):
+    state = BattleState(remaining_turns=3, hp=100, genki=0,
+        anomaly=AnomalyState(full_power_points=50, cumulative_full_power_points=total),
+        observed_effect_values=(('full_power_point', 50),))
+    trigger = _trigger('ProduceExamFieldStatusType_FullPowerPointGetSumUp', 10, negated=negated)
+    assert evaluate_exam_trigger(trigger, state) == TriggerVerdict.UNKNOWN
