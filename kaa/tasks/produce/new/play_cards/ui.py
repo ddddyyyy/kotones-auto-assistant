@@ -45,10 +45,22 @@ def _has_upgrade_marker(img: MatLike, letter_rect: Rect) -> bool:
         & (marker[:, :, 0] < 210)
     )
     _, _, stats, _ = cv2.connectedComponentsWithStats(red.astype('uint8'))
-    return any(
-        width >= 12 and height >= 12 and area >= 100
-        for _, _, width, height, area in stats[1:]
-    )
+    for x, y, width, height, area in stats[1:]:
+        if not (12 <= width <= 32 and 12 <= height <= 32 and area >= 100):
+            continue
+        shape = red[y:y+height, x:x+width]
+        # Card artwork and orange backgrounds can pass the color/area test.
+        # A plus has two central strokes with mostly empty outer corners.
+        quarter_w, quarter_h = width // 4, height // 4
+        corners = (
+            shape[:quarter_h, :quarter_w], shape[:quarter_h, -quarter_w:],
+            shape[-quarter_h:, :quarter_w], shape[-quarter_h:, -quarter_w:],
+        )
+        if (shape[height // 2, :].mean() >= 0.8
+                and shape[:, width // 2].mean() >= 0.75
+                and sum(corner.mean() for corner in corners) / 4 < 0.25):
+            return True
+    return False
 
 
 def _upgrade_marker_visible(letter_rect: Rect, next_letter: Rect | None) -> bool:
