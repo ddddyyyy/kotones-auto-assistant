@@ -458,3 +458,44 @@ def test_unknown_growth_fee_cannot_certify_original_zero_special_cost(monkeypatc
     state = replace(_state(hp=100), buffs=ExamBuffState(review=5), projected_effect_values=(('review', 5),))
     after = simulate_play(state, _card(green=0))
     assert after.buffs.review == 5 and dict(after.effect_values_for_planning)['review'] is None
+
+
+@pytest.mark.parametrize('green,red', [(4, 0), (0, 2), (0, 0)])
+def test_visible_unparsed_growth_cannot_prove_base_payment(green, red):
+    card = _card(green=green, red=red)
+    state = replace(_state(hp=100, growth=()),
+                    unresolved_growth_card_ids=frozenset({card._id}))
+    assert can_afford_play(state, card) is None
+    assert costs.play_cost(state, card) == (green, red)
+    after = simulate_play(state, card)
+    assert not after.hp_known and not after.genki_known
+    assert after.unresolved_growth_card_ids == state.unresolved_growth_card_ids
+
+
+def test_visible_unparsed_growth_keeps_output_estimate_but_not_confirmation():
+    effect = SimpleNamespace(produce_exam_effect=SimpleNamespace(
+        effect_type=ProduceExamEffectType.ExamLesson, effect_value1=6,
+        effect_value2=0, effect_count=2, effect_turn=0))
+    card = _card(green=0, effects=(effect,))
+    state = replace(_state(growth=()), unresolved_growth_card_ids=frozenset({card._id}))
+    evaluation = EffectHeuristicEvaluator().evaluate(card, state)
+    assert evaluation.projected_output == 12
+    assert evaluation.confirmed_output == 0
+
+
+def test_uncertain_copy_identity_does_not_share_growth_amounts():
+    first, second = _card(), _card()
+    other = _card(); other._id = 'different-id'
+    state = replace(_state(hp=100, growth=()), unresolved_growth_card_ids=frozenset({first._id}))
+    assert first is not second
+    assert can_afford_play(state, first) is None
+    assert can_afford_play(state, second) is None
+    assert can_afford_play(state, other) is True
+    assert costs.play_cost(state, first) == costs.play_cost(state, second) == (4, 0)
+
+
+def test_refreshed_snapshot_does_not_retain_old_growth_marker():
+    state = replace(_state(hp=100, growth=()), unresolved_growth_card_ids=frozenset({'same-id'}))
+    assert can_afford_play(state, _card()) is None
+    refreshed = replace(state, unresolved_growth_card_ids=frozenset())
+    assert can_afford_play(refreshed, _card()) is True

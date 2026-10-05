@@ -152,6 +152,21 @@ class CardGameObject(GameObject):
     _letter_rect: Rect
 
     @cached_property
+    def has_growth_marker(self) -> bool:
+        """Visible growth indicator only; it does not identify its value or instance."""
+        x = int(self._letter_rect.center.x)
+        y = self._letter_rect.y1
+        height, width = self._screenshot.shape[:2]
+        x1, y1 = max(0, x - 120), max(0, y - 240)
+        x2, y2 = min(width, x - 70), min(height, y - 185)
+        if x2 - x1 < 26 or y2 - y1 < 26:
+            return False
+        return image.raw().find(
+            self._screenshot, R.InProduce.IconCardGrowth.template,
+            rect=Rect.from_xyxy(x1, y1, x2, y2), threshold=0.9,
+        ) is not None
+
+    @cached_property
     def available(self):
         return color.find(self._screenshot, '#7a7d7d', rect=self._letter_rect) is None
     

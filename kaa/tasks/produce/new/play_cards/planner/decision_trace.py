@@ -127,6 +127,7 @@ class DecisionTrace:
                 'candidates': [
                     {
                         'evaluation': asdict(evaluation),
+                        'observed_growth_marker': getattr(hand, 'has_growth_marker', False),
                         'upgrade_count': getattr(hand.card, 'upgrade_count', None),
                         'stamina': getattr(hand.card, 'stamina', None),
                         'force_stamina': getattr(hand.card, 'force_stamina', None),

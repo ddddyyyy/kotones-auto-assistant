@@ -1,0 +1,23 @@
+{
+  "version": 3,
+  "definitions": {
+    "633b9322-74f2-42b8-88e5-654b97e43e7e": {
+      "type": "prefab",
+      "name": "InProduce.IconCardGrowth",
+      "displayName": "手牌成长标记",
+      "prefab_id": "TemplateMatchPrefab",
+      "variant_policy": {},
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 467,
+          "y1": 858,
+          "x2": 493,
+          "y2": 884
+        },
+        "fixed": false,
+        "threshold": 0.9
+      }
+    }
+  }
+}

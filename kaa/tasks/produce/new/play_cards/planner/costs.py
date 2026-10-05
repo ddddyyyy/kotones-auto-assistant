@@ -25,6 +25,7 @@ def projected_growth_payment(state: BattleState, card: SkillCard) -> tuple[int, 
     green = max(0, getattr(card, 'stamina', 0) or 0)
     red = max(0, getattr(card, 'force_stamina', 0) or 0)
     known = not card_enchant_uncertainty(card)[0]
+    known &= getattr(card, '_id', None) not in state.unresolved_growth_card_ids
     for effect_id, active in state.projected_card_growth:
         rule = get_card_growth_rule(effect_id)
         match = rule.matches(card)
@@ -46,6 +47,7 @@ def projected_growth_output(
 ) -> tuple[float, int, bool]:
     """Apply supported pre-card growth; in-card timing stays unknown."""
     known = not card_enchant_uncertainty(card)[1]
+    known &= getattr(card, '_id', None) not in state.unresolved_growth_card_ids
     for index, (effect_id, active) in enumerate(state.projected_card_growth):
         rule = get_card_growth_rule(effect_id)
         match = rule.matches(card)

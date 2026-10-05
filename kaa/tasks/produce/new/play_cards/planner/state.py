@@ -145,6 +145,13 @@ class BattleState:
     grants. This does not claim the restriction was observed on the HUD.
     """
 
+    unresolved_growth_card_ids: frozenset[str] = frozenset()
+    """Card kinds with a visible, unparsed growth marker in this snapshot.
+
+    Copy identity is unavailable: matching copies all remain uncertain, never
+    share an inferred growth amount. Refreshed observations replace this set.
+    """
+
     projected_card_growth: tuple[tuple[str, bool], ...] = ()
     """Growth effect IDs and confirmed-trigger flags, only for same-turn search.
 

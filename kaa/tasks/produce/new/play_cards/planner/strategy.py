@@ -683,6 +683,11 @@ class PlannerStrategy(AbstractBattleStrategy):
                 if card is not None and card.card is not None
             ),
             hand_size=len(hands),
+            unresolved_growth_card_ids=frozenset(
+                hand.card._id for hand in hands
+                if hand is not None and hand.card is not None
+                and getattr(hand, 'has_growth_marker', False)
+            ),
             draw_pile_card_ids=self._memory.inferred_draw_pile(cards),
             discard_card_ids=tuple(self._memory.discard),
             removed_card_ids=tuple(self._memory.removed),
