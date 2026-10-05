@@ -25,6 +25,24 @@ class MoveCardOption:
     card: SkillCard | None
 
 
+def find_restored_move_option(
+    options: Iterable[MoveCardOption],
+    target: MoveCardOption,
+) -> MoveCardOption | None:
+    """Match one visible slot after viewport restoration, not a persistent card ID."""
+    if target.card is None:
+        return None
+    matches = [
+        option for option in options
+        if option.card is not None
+        and option.card._id == target.card._id
+        and option.card.upgrade_count == target.card.upgrade_count
+        and abs(option.letter_rect.center.x - target.letter_rect.center.x) < 25
+        and abs(option.letter_rect.center.y - target.letter_rect.center.y) < 25
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _has_upgrade_marker(screen: MatLike, letter: Rect) -> bool:
     """The small red plus on the modal card distinguishes base from upgraded."""
     x = int(letter.x1)

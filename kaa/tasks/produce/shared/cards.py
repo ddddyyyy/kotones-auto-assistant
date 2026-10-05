@@ -14,6 +14,7 @@ from kaa.tasks.produce.shared.common import acquisition_date_change_dialog
 from kaa.tasks.produce.new.play_cards.strategy import AbstractBattleStrategy
 from kaa.tasks.produce.new.play_cards.move_selection import (
     MoveCardOption,
+    find_restored_move_option,
     observe_move_scrollbar,
     observe_move_cards,
 )
@@ -567,14 +568,6 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
         scrollbar = observe_move_scrollbar(device.screenshot())
         return scrollbar is not None and abs(scrollbar.target_y(position) - scrollbar.center_y) <= 5
 
-    def same_card(first: MoveCardOption, second: MoveCardOption) -> bool:
-        return (
-            first.card is not None
-            and second.card is not None
-            and first.card._id == second.card._id
-            and first.card.upgrade_count == second.card.upgrade_count
-        )
-
     def choose_option() -> MoveCardOption | None:
         options = find_options()
         if not options:
@@ -597,6 +590,9 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
             scanned_viewports += 1
             visible = observe_move_cards(screen)
             scrollbar = observe_move_scrollbar(screen)
+            if len(positions) > 1 and scrollbar is None:
+                logger.warning('Could not observe the hold viewport position; stopping scan.')
+                break
             actual_position = scrollbar.position if scrollbar is not None else position
             pooled.extend((actual_position, option) for option in visible)
         if not pooled:
@@ -613,16 +609,25 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
         target_position, target = pooled[ranked[0]]
         if len(positions) > 1 and not scroll_to(target_position):
             logger.warning('Could not restore the hold viewport; ranking freshly visible cards.')
-        current = find_options()
-        found = next((option for option in current if same_card(option, target)), None)
+            return next(iter(_order_move_options(find_options(), battle_strategy)), None)
+
+        def match_current_viewport() -> tuple[list[MoveCardOption], MoveCardOption | None]:
+            screen = device.screenshot()
+            current = observe_move_cards(screen)
+            if len(positions) > 1:
+                scrollbar = observe_move_scrollbar(screen)
+                if scrollbar is None or abs(scrollbar.target_y(target_position) - scrollbar.center_y) > 5:
+                    return current, None
+            return current, find_restored_move_option(current, target)
+
+        current, found = match_current_viewport()
         if found is not None:
             return found
         # Recognition can fail transiently after a successful drag. Retry one
-        # fresh frame before falling back, never reuse a scanned click rectangle.
+        # fresh frame, verifying its viewport before matching the original slot.
         if target.card is not None:
             sleep(0.2)
-            current = find_options()
-            found = next((option for option in current if same_card(option, target)), None)
+            current, found = match_current_viewport()
             if found is not None:
                 return found
         logger.warning('Top hold card was not visible after scrolling; using current best.')
