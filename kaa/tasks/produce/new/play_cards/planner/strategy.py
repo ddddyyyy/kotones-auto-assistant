@@ -127,7 +127,7 @@ class PlannerStrategy(AbstractBattleStrategy):
             (card, evaluation)
             for card in hands
             if card.card is not None
-            for evaluation in [self._evaluator.evaluate(card.card, state)]
+            for evaluation in [self._evaluator.evaluate(card.card, self._candidate_state(state, card))]
             if evaluation is not None
         ]
         if not candidates:
@@ -503,6 +503,21 @@ class PlannerStrategy(AbstractBattleStrategy):
                 reason=f'{evaluation.reason}；考试落后时优先确定产分',
             )))
         return ranked
+
+    @staticmethod
+    def _candidate_state(state: BattleState, hand: 'CardGameObject') -> BattleState:
+        if hand.card is None or not getattr(hand, 'has_growth_marker', False):
+            return state
+        if not any(
+            effect.produce_exam_effect is not None
+            and effect.produce_exam_effect.effect_type == ProduceExamEffectType.ExamLesson
+            for effect in hand.card.play_effects
+        ):
+            return state
+        preview = getattr(hand, 'output_preview', None)
+        if preview is None or preview.count is None:
+            return state
+        return replace(state, observed_card_output=(hand.card._id, preview.per_hit, preview.count))
 
     def _add_shallow_lookahead(
         self,

@@ -1403,3 +1403,84 @@ def test_same_turn_search_retains_observed_exam_percentage():
     assert after.remaining_turns == state.remaining_turns
     evaluation = EffectHeuristicEvaluator().evaluate(cast(SkillCard, output), after)
     assert evaluation.projected_output == evaluation.confirmed_output == pytest.approx(46.8)
+
+
+@pytest.mark.parametrize('percent', [468, None])
+def test_current_slot_preview_includes_growth_and_multipliers_once_for_ranking(percent):
+    from dataclasses import replace
+    card = cast(SkillCard, _card('grown',
+        _effect(ProduceExamEffectType.ExamConcentration, 1),
+        _effect(ProduceExamEffectType.ExamLesson, 6, count=2)))
+    state = BattleState(
+        remaining_turns=3, hp=21, genki=12, is_exam=True,
+        exam_score_percent=percent, unresolved_growth_card_ids=frozenset({'grown'}),
+    )
+    base = EffectHeuristicEvaluator().evaluate(card, state)
+    preview = EffectHeuristicEvaluator().evaluate(card, replace(
+        state, observed_card_output=('grown', 150, 2)))
+    assert preview.projected_output == 300
+    assert preview.confirmed_output == 0
+    assert preview.score > base.score
+
+
+@pytest.mark.parametrize('observation,projected', [
+    (('other-slot', 150, 2), False), (('grown', -1, 2), False),
+    (('grown', 150, 0), False), (('grown', 150, 2), True),
+])
+def test_preview_cannot_apply_to_other_card_invalid_value_or_search_state(observation, projected):
+    card = cast(SkillCard, _card('grown', _effect(ProduceExamEffectType.ExamLesson, 6, count=2)))
+    state = BattleState(
+        remaining_turns=3, hp=21, genki=12,
+        observed_card_output=observation,
+        projected_effect_values=() if projected else None,
+    )
+    assert EffectHeuristicEvaluator().evaluate(card, state).projected_output == 12
+
+
+def test_preview_does_not_replace_multiple_or_dependent_scoring_segments():
+    from kaa.tasks.produce.new.play_cards.planner.visible_output import current_preview_output
+    state = BattleState(remaining_turns=3, hp=21, genki=12,
+                        observed_card_output=('grown', 150, 2))
+    for effects in [
+        (_effect(ProduceExamEffectType.ExamLesson, 6), _effect(ProduceExamEffectType.ExamLesson, 5)),
+        (_effect(ProduceExamEffectType.ExamLessonDependBlock, 1000),),
+    ]:
+        card = cast(SkillCard, _card('grown', *effects))
+        assert current_preview_output(card, state) is None
+
+
+def test_unconfirmed_condition_cannot_use_current_card_preview(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import visible_output
+    card = cast(SkillCard, _card('grown', _effect(ProduceExamEffectType.ExamLesson, 6)))
+    state = BattleState(remaining_turns=3, hp=21, genki=12,
+                        observed_card_output=('grown', 150, 2))
+    monkeypatch.setattr(visible_output, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    assert visible_output.current_preview_output(card, state) is None
+
+
+
+def test_simulation_discards_current_slot_preview():
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    card = cast(SkillCard, _card('grown', _effect(ProduceExamEffectType.ExamLesson, 6, count=2)))
+    state = BattleState(remaining_turns=3, hp=21, genki=12,
+                        observed_card_output=('grown', 150, 2))
+    future = simulate_play(state, card)
+    assert future.observed_card_output is None
+    assert EffectHeuristicEvaluator().evaluate(card, future).projected_output == 12
+
+
+
+def test_same_name_slots_keep_individual_preview_and_leave_shared_snapshot_clean():
+    from kaa.tasks.produce.new.play_cards.card_output import CardOutputPreview
+    from kaa.tasks.produce.new.play_cards.planner.strategy import PlannerStrategy
+    from kaa.tasks.produce.new.play_cards.ui import CardGameObject
+    card = cast(SkillCard, _card('same-kind', _effect(ProduceExamEffectType.ExamLesson, 6, count=2)))
+    state = BattleState(remaining_turns=3, hp=21, genki=12)
+    previews = []
+    for value in (150, 70):
+        hand = cast(CardGameObject, SimpleNamespace(
+            card=card, has_growth_marker=True, output_preview=CardOutputPreview(value, 2)))
+        local = PlannerStrategy._candidate_state(state, hand)
+        previews.append(EffectHeuristicEvaluator().evaluate(card, local).projected_output)
+    assert previews == [300, 140]
+    assert state.observed_card_output is None

@@ -127,6 +127,7 @@ class DecisionTrace:
                 'candidates': [
                     {
                         'evaluation': asdict(evaluation),
+                        'observed_output_preview': _card_preview_metadata(hand),
                         'observed_growth_marker': getattr(hand, 'has_growth_marker', False),
                         'upgrade_count': getattr(hand.card, 'upgrade_count', None),
                         'stamina': getattr(hand.card, 'stamina', None),
@@ -190,3 +191,8 @@ def _card_enchant_metadata(card) -> dict | None:
         'remaining_trigger_count': None,
         'status': 'unobserved_per_instance',
     }
+
+
+def _card_preview_metadata(hand) -> dict | None:
+    preview = vars(hand).get('output_preview')
+    return preview._asdict() if preview is not None else None

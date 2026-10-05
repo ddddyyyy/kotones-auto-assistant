@@ -17,6 +17,7 @@ from kaa.db.produce_exam_auto import (
 from kaa.db.skill_card import ProduceExamEffect, SkillCard
 
 from .state import BattleState
+from .visible_output import current_preview_output
 from .profiles import profile_for
 from .costs import play_cost, projected_growth_output
 from .simulator import simulate_play, simulate_play_prefix
@@ -166,6 +167,7 @@ class EffectHeuristicEvaluator:
         score = 0.0
         projected_output = 0.0
         confirmed_output = 0.0
+        preview_output = current_preview_output(card, state)
         reasons: list[str] = []
         profile = profile_for(state.archetype)
 
@@ -313,6 +315,10 @@ class EffectHeuristicEvaluator:
 
             if kind in self._DIRECT:
                 output = (value + effect_state.anomaly.enthusiasm) * count * output_multiplier
+                if kind == ProduceExamEffectType.ExamLesson and preview_output is not None:
+                    output = float(preview_output)
+                    output_inputs_known = False
+                    reasons.append('同帧牌面预览，实际收益未确认')
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('即时参数')

@@ -18,6 +18,7 @@ from kaa.util import paths
 from kaa.image_db import ImageDatabase
 from kaa.image_db import registry
 from kaa.db.skill_card import SkillCard
+from .card_output import CardOutputPreview, read_card_output_preview
 
 DEBUG = False
 CARD_OFFSET = (57, 148) # 从字母位置到卡片左上角的偏移量 x, y
@@ -150,6 +151,15 @@ class CardGameObject(GameObject):
 
     _screenshot: MatLike
     _letter_rect: Rect
+
+    @cached_property
+    def output_preview(self) -> CardOutputPreview | None:
+        if any(
+            0 < letter.center.x - self._letter_rect.center.x < 200
+            for letter in _locate_letters(self._screenshot)
+        ):
+            return None
+        return read_card_output_preview(self._screenshot, self._letter_rect)
 
     @cached_property
     def has_growth_marker(self) -> bool:

@@ -213,6 +213,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         pass
     return replace(
         state,
+        observed_card_output=None,
         hp=hp,
         genki=genki,
         playable_count=max(0, state.playable_count - 1 + added_plays),

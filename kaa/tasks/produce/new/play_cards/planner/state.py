@@ -145,6 +145,13 @@ class BattleState:
     grants. This does not claim the restriction was observed on the HUD.
     """
 
+    observed_card_output: tuple[str, int, int] | None = None
+    """Candidate-local current header (card kind, per-hit, count), ranking only.
+
+    Set only for the individual evaluation; never shared with other slots,
+    lookahead, memory, or a later observation.
+    """
+
     unresolved_growth_card_ids: frozenset[str] = frozenset()
     """Card kinds with a visible, unparsed growth marker in this snapshot.
 
