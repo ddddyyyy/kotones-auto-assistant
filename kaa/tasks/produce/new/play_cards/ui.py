@@ -102,6 +102,11 @@ def _visible_upgrade_count(img: MatLike, letter_rect: Rect) -> int:
     if x1 >= x2 or y1 >= y2:
         return 0
     title = img[y1:y2, x1:x2]
+    return _title_upgrade_suffix(title)[0]
+
+
+def _title_upgrade_suffix(title: MatLike) -> tuple[int, int | None]:
+    """Locate the same upgrade glyphs for level reading and title isolation."""
     gray = cv2.cvtColor(title, cv2.COLOR_BGR2GRAY)
     # Selected cards render the final suffix in cyan rather than dark gray.
     cyan = (
@@ -117,13 +122,18 @@ def _visible_upgrade_count(img: MatLike, letter_rect: Rect) -> int:
         & (title[:, :, 0].astype('int16') - title[:, :, 2] > 12)
     )
     return max(
-        _count_upgrade_suffix(((gray < 150) | mask).astype('uint8'))
-        for mask in (cyan, faded_cyan)
+        (_upgrade_suffix(((gray < 150) | mask).astype('uint8'))
+         for mask in (cyan, faded_cyan)),
+        key=lambda suffix: suffix[0],
     )
 
 
 def _count_upgrade_suffix(ink: MatLike) -> int:
     """Count only contiguous cross-shaped glyphs at the end of a title."""
+    return _upgrade_suffix(ink)[0]
+
+
+def _upgrade_suffix(ink: MatLike) -> tuple[int, int | None]:
     labels, _, stats, _ = cv2.connectedComponentsWithStats(ink)
     glyphs: list[tuple[int, int, int, bool]] = []
     for component in range(1, labels):
@@ -141,7 +151,7 @@ def _count_upgrade_suffix(ink: MatLike) -> int:
         glyphs.append((x, y, w, is_plus))
     glyphs.sort(key=lambda glyph: glyph[0])
     if not glyphs or not glyphs[-1][3]:
-        return 0
+        return 0, None
     suffix = 1
     for previous, following in zip(reversed(glyphs[:-1]), reversed(glyphs[1:])):
         if not previous[3] or following[0] - (previous[0] + previous[2]) > 6:
@@ -149,7 +159,7 @@ def _count_upgrade_suffix(ink: MatLike) -> int:
         if abs(previous[1] - following[1]) > 4:
             break
         suffix += 1
-    return min(suffix, 3)
+    return min(suffix, 3), glyphs[-suffix][0]
 
 
 def _observed_upgrade_count(
@@ -307,6 +317,13 @@ def _read_card_title(
     if x < 100 or x + 100 > img.shape[1] or y + 20 < 0 or y + 46 > img.shape[0]:
         return None
     crop = img[y+20:y+46, x-100:x+100]
+    _, suffix_start = _title_upgrade_suffix(crop)
+    if suffix_start is not None:
+        # The upgrade crosses are not part of the base identity. Isolate the
+        # name only at a detected glyph boundary, without guessing its text.
+        crop = crop[:, :suffix_start]
+    if crop.size == 0:
+        return None
     readings: list[tuple[str, float]] = []
     confident_titles: set[str] = set()
     try:
