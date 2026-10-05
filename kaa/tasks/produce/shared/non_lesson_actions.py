@@ -177,6 +177,11 @@ def enter_consult():
     purchase_confirmed = False
     exit_clicked = False
     for _ in Loop():
+        if ProduceInterrupt._check_consult_exit_confirm(device.screenshot()):
+            exit_clicked = True
+            exit_cd.start()
+            continue
+
         if wait_purchase_cd.expired():
             # 等待购买确认对话框超时后直接认为购买完成
             purchase_confirmed = True

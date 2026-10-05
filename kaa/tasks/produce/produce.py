@@ -31,6 +31,7 @@ _ACTIVE_PRODUCE_SCENES = {
     SceneType.STUDY,
     SceneType.OUTING,
     SceneType.CONSULT,
+    SceneType.CONSULT_EXIT_CONFIRM,
     SceneType.ALLOWANCE,
     SceneType.SELECT_DRINK,
     SceneType.SELECT_CARD,

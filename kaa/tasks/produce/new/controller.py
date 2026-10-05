@@ -88,6 +88,9 @@ class ProduceController:
             case SceneType.PDRINK_MAX_CONFIRM:
                 self.strategy.on_pdrink_max_confirm(PDrinkMaxConfirmContext(self.page, self))
                 return True
+            case SceneType.CONSULT_EXIT_CONFIRM:
+                ProduceInterrupt._check_consult_exit_confirm(device.screenshot())
+                return True
             case SceneType.OUTING_STAMINA_MAX:
                 ProduceInterrupt._check_outing_stamina_max(device.screenshot())
                 return True
@@ -209,7 +212,7 @@ class ProduceController:
                 # TODO: 此类型目前在 page.py 中处理掉了，后续需要移动到 strategy 中
                 pass
             case (
-                SceneType.LOADING | SceneType.PDRINK_MAX | SceneType.PDRINK_MAX_CONFIRM | SceneType.OUTING_STAMINA_MAX |
+                SceneType.LOADING | SceneType.PDRINK_MAX | SceneType.PDRINK_MAX_CONFIRM | SceneType.OUTING_STAMINA_MAX | SceneType.CONSULT_EXIT_CONFIRM |
                 SceneType.SELECT_DRINK | SceneType.SELECT_CARD | SceneType.SELECT_PITEM | 
                 SceneType.SKILL_CARD_ENHANCE | SceneType.SKILL_CARD_REMOVAL | SceneType.SKILL_CARD_CHANGE_1 | SceneType.SKILL_CARD_CHANGE_2
             ):

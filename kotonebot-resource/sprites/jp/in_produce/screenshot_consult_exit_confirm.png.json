@@ -1,0 +1,65 @@
+{
+  "version": 3,
+  "definitions": {
+    "b3d015c7-7c55-4483-8eb5-5d9e933c71b0": {
+      "name": "InProduce.ConsultExitConfirm.Title",
+      "displayName": "咨询结束确认 标题",
+      "type": "prefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 57,
+          "y1": 765,
+          "x2": 254,
+          "y2": 805
+        }
+      },
+      "prefab_id": "TemplateMatchPrefab",
+      "variant_policy": {}
+    },
+    "57e2896c-5766-465d-bf4e-5a37ad42cca9": {
+      "name": "InProduce.ConsultExitConfirm.ButtonConfirm",
+      "displayName": "咨询结束确认 决定按钮",
+      "type": "prefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 380,
+          "y1": 1125,
+          "x2": 622,
+          "y2": 1194
+        }
+      },
+      "prefab_id": "TemplateMatchPrefab",
+      "variant_policy": {}
+    },
+    "f2f98203-4fb6-408f-9759-07bf48d97a0d": {
+      "name": "InProduce.ConsultExitConfirm.BoxTitle",
+      "displayName": "咨询结束确认 标题区域",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 27,
+          "y1": 650,
+          "x2": 693,
+          "y2": 900
+        }
+      }
+    },
+    "2ba1cec4-7ea4-43d2-b9cc-8a452875ca03": {
+      "name": "InProduce.ConsultExitConfirm.BoxConfirm",
+      "displayName": "咨询结束确认 决定按钮区域",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 367,
+          "y1": 1105,
+          "x2": 640,
+          "y2": 1220
+        }
+      }
+    }
+  }
+}

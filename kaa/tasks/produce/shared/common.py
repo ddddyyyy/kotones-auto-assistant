@@ -3,6 +3,7 @@ from turtle import color
 from typing import Literal, Callable
 
 from cv2.typing import MatLike
+from kotonebot.backend.image import find as find_template, TemplateMatchResult
 from kaa.config.const import HifScenario
 from kotonebot import (
     ocr,
@@ -274,6 +275,7 @@ AcquisitionType = Literal[
     "PDrinkSelect", # P饮料主动领取
     "PDrinkMax", # P饮料到达上限
     "OutingStaminaMax", # 外出时体力已满的确认弹窗
+    "ConsultExitConfirm", # 咨询结束确认弹窗
     "PSkillCardAcquire", # 技能卡领取
     "PSkillCardSelect", # 技能卡选择
     "PSkillCardEnhanced", # 技能卡强化
@@ -387,6 +389,27 @@ class ProduceInterrupt:
         return None
 
     @staticmethod
+    def _find_consult_exit_confirm(img: MatLike) -> TemplateMatchResult | None:
+        """仅在同帧专用标题与决定按钮同时存在时确认咨询退出弹窗。"""
+        if find_template(
+            img, R.InProduce.ConsultExitConfirm.Title.template,
+            rect=R.InProduce.ConsultExitConfirm.BoxTitle, threshold=0.95,
+        ) is None:
+            return None
+        return find_template(
+            img, R.InProduce.ConsultExitConfirm.ButtonConfirm.template,
+            rect=R.InProduce.ConsultExitConfirm.BoxConfirm, threshold=0.95,
+        )
+
+    @staticmethod
+    def _check_consult_exit_confirm(img: MatLike) -> AcquisitionType | None:
+        if confirm := ProduceInterrupt._find_consult_exit_confirm(img):
+            device.click(confirm.rect)
+            logger.info("Confirmed consult exit.")
+            return "ConsultExitConfirm"
+        return None
+
+    @staticmethod
     def _check_skill_card_enhance(img: MatLike) -> AcquisitionType | None:
         """检查技能卡自选强化"""
         if R.InProduce.IconTitleSkillCardEnhance.exists():
@@ -455,6 +478,7 @@ class ProduceInterrupt:
         _check_pdrink_max,
         _check_pdrink_max_confirm,
         _check_outing_stamina_max,
+        _check_consult_exit_confirm,
         _check_skill_card_enhance,
         _check_skill_card_removal,
         _check_network_error,

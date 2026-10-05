@@ -134,6 +134,9 @@ class _SceneCheckMixin:
             logger.debug("Scene detected: OUTING_STAMINA_MAX")
             return Scene(SceneType.OUTING_STAMINA_MAX)
 
+        if ProduceInterrupt._find_consult_exit_confirm(device.screenshot()) is not None:
+            return Scene(SceneType.CONSULT_EXIT_CONFIRM)
+
         # P饮料到达上限
         if R.InProduce.TextPDrinkMax.exists():
             logger.debug("Scene detected: PDRINK_MAX")
@@ -893,6 +896,11 @@ class ConsultContext(Context):
                 )
                 return
             img = device.screenshot()
+            # 退出弹窗会模糊背景标题，先处理它再判断是否离开咨询页面。
+            if ProduceInterrupt._check_consult_exit_confirm(img):
+                exit_missing = 0
+                continue
+
             # 中断处理（跳过未读交流等），与 pump_interrupts_until 保持一致
             ProduceInterrupt._check_skip_commu(img)
 
