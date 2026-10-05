@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from types import SimpleNamespace
 
 from kaa.tasks.produce.new.play_cards.planner.decision_trace import DecisionTrace, TRACE_ENV
@@ -185,3 +186,63 @@ def test_screening_is_bounded_and_write_failure_preserves_feedback(tmp_path):
     failing = DecisionTrace(occupied);failing.pending = 10
     failing.screening([], None, [], [], [], 'no_playable_cards')
     assert failing.pending == 10
+
+
+
+def _input_hand(**kwargs) -> Any:
+    return SimpleNamespace(**kwargs)
+
+
+def test_input_evidence_saves_exact_stored_snapshot_and_slot(tmp_path):
+    import hashlib
+    import cv2
+    import numpy as np
+    from kotonebot.primitives import Rect
+    frame = np.arange(1200, dtype=np.uint8).reshape((20, 20, 3))
+    hand = _input_hand(card=None, _screenshot=frame, _letter_rect=Rect(2, 3, 4, 5))
+    trace = DecisionTrace(tmp_path, save_inputs=True)
+    trace.screening([hand, None], None, [], [], [], 'no_recognized_card')
+    record = json.loads(trace.path.read_text(encoding='utf-8'))
+    evidence = record['input_evidence']
+    data = (tmp_path / evidence['path']).read_bytes()
+    assert evidence['status'] == 'saved'
+    assert hashlib.sha256(data).hexdigest() == evidence['sha256']
+    assert np.array_equal(cv2.imdecode(np.frombuffer(data, dtype=np.uint8), 1), frame)
+    assert record['hands'][0]['letter_rect'] == [2, 3, 4, 5]
+    assert record['hands'][1]['letter_rect'] is None
+    assert record['decision_sequence'] is None
+
+
+def test_input_evidence_rejects_missing_or_mixed_snapshots(tmp_path):
+    import numpy as np
+    trace = DecisionTrace(tmp_path, save_inputs=True)
+    frame = np.zeros((2, 2, 3), dtype=np.uint8)
+    assert trace._input_evidence([_input_hand()]) == {'status': 'snapshot_missing'}
+    assert trace._input_evidence([_input_hand(_screenshot=frame),
+        _input_hand(_screenshot=frame.copy())]) == {'status': 'mixed_snapshots'}
+    assert trace.input_attempts == 0
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_input_evidence_is_independently_opt_in(monkeypatch, tmp_path):
+    from kaa.tasks.produce.new.play_cards.planner.decision_trace import INPUT_EVIDENCE_ENV
+    monkeypatch.setenv(TRACE_ENV, str(tmp_path))
+    monkeypatch.delenv(INPUT_EVIDENCE_ENV, raising=False)
+    trace = DecisionTrace.from_environment()
+    assert trace is not None and not trace.save_inputs
+    assert trace._input_evidence([_input_hand()]) is None
+    monkeypatch.setenv(INPUT_EVIDENCE_ENV, '1')
+    trace = DecisionTrace.from_environment()
+    assert trace is not None and trace.save_inputs
+
+
+def test_input_evidence_write_failure_and_limit_do_not_break_screening(tmp_path):
+    import numpy as np
+    occupied = tmp_path / 'occupied'
+    occupied.touch()
+    trace = DecisionTrace(occupied, save_inputs=True)
+    hand = _input_hand(card=None, _screenshot=np.zeros((2, 2, 3), dtype=np.uint8))
+    assert trace._input_evidence([hand]) == {'status': 'write_failed'}
+    assert trace.input_attempts == 1
+    trace.input_attempts = 32
+    assert trace._input_evidence([hand]) == {'status': 'limit_reached'}

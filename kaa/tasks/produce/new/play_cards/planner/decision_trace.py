@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 from enum import Enum
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ from .simulator import can_afford_play
 
 logger = logging.getLogger(__name__)
 TRACE_ENV = 'KAA_PLANNER_TRACE_DIR'
+INPUT_EVIDENCE_ENV = 'KAA_PLANNER_INPUT_EVIDENCE'
 
 
 def _json_default(value: object) -> object:
@@ -35,8 +37,10 @@ def _json_default(value: object) -> object:
 class DecisionTrace:
     """One bounded JSONL per battle. State is inferred, not ground truth."""
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, *, save_inputs: bool = False):
         self.path = directory / f'decisions-{uuid4().hex}.jsonl'
+        self.save_inputs = save_inputs
+        self.input_attempts = 0
         self.count = 0
         self.screening_count = 0
         self.pending: int | None = None
@@ -44,13 +48,55 @@ class DecisionTrace:
     @classmethod
     def from_environment(cls) -> 'DecisionTrace | None':
         directory = os.environ.get(TRACE_ENV)
-        return cls(Path(directory)) if directory else None
+        return cls(Path(directory), save_inputs=os.environ.get(INPUT_EVIDENCE_ENV) == '1') if directory else None
 
     def _append(self, payload: dict) -> None:
         serialized = json.dumps(payload, ensure_ascii=False, default=_json_default)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open('a', encoding='utf-8') as stream:
             stream.write(serialized + '\n')
+
+    def _input_evidence(self, hands: list['CardGameObject | None']) -> dict | None:
+        if not self.save_inputs:
+            return None
+        if self.input_attempts >= 32:
+            return {'status': 'limit_reached'}
+        # Read stored inputs only: no device operation, lazy property or OCR.
+        frames = [vars(hand).get('_screenshot') for hand in hands if hand is not None]
+        if not frames or any(frame is None for frame in frames):
+            return {'status': 'snapshot_missing'}
+        frame = frames[0]
+        if frame is None:
+            return {'status': 'snapshot_missing'}
+        if any(other is not frame for other in frames):
+            return {'status': 'mixed_snapshots'}
+        self.input_attempts += 1
+        try:
+            import cv2
+            from kaa.kaa_context import config_name, produce_session
+            session = produce_session()
+            ok, encoded = cv2.imencode('.png', frame)
+            if not ok:
+                raise OSError('PNG encoding failed')
+            data = encoded.tobytes()
+            relative = Path('inputs') / f'{self.path.stem}-{self.screening_count}.png'
+            path = self.path.parent / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            return {
+                'status': 'saved', 'path': relative.as_posix(),
+                'sha256': hashlib.sha256(data).hexdigest(),
+                'source': 'card_recognition_snapshot',
+                'shape': list(frame.shape),
+                'profile': config_name(),
+                'idol_card': session.idol_card if session is not None else None,
+                'scenario': session.scenario if session is not None else None,
+                # Caller-supplied label, not an independently checked Git revision.
+                'declared_revision': os.environ.get('KAA_PLANNER_VALIDATION_REVISION'),
+            }
+        except Exception:
+            logger.warning('Could not save planner input evidence.', exc_info=True)
+            return {'status': 'write_failed'}
 
     def screening(
         self,
@@ -89,8 +135,10 @@ class DecisionTrace:
                     reason = 'clear_priority_filter'
                 else:
                     reason = 'eligible'
+                letter = vars(hand).get('_letter_rect') if hand is not None else None
                 rows.append({
                     'slot': slot,
+                    'letter_rect': list(letter.xywh) if letter is not None else None,
                     'card_id': card._id if card is not None else None,
                     'reason': reason,
                     'evaluation': asdict(evaluation) if evaluation is not None else None,
@@ -105,6 +153,7 @@ class DecisionTrace:
                 'attempt': self.screening_count, 'outcome': outcome,
                 'decision_sequence': self.count + 1
                 if outcome == 'selected' and self.count < 256 else None,
+                'input_evidence': self._input_evidence(hands),
                 'state': asdict(state) if state is not None else None,
                 'hands': rows,
             })
