@@ -155,11 +155,11 @@ def test_single_card_id_growth_targets_card_type_not_unique_instance(monkeypatch
         card_growth.get_card_growth_rule.cache_clear()
 
 
-def test_count_reduction_is_not_assumed_to_have_a_known_minimum(monkeypatch):
+def test_count_reduction_is_parsed_without_assuming_runtime_minimum(monkeypatch):
     _setup(monkeypatch, [('a', 'LessonCountReduce', 1), ('b', 'CostAdd', 1)])
     try:
         rule = card_growth.get_card_growth_rule('growth')
-        assert not rule.output_known and not rule.lesson_count_changes
+        assert rule.output_known and rule.lesson_count_changes == (-1,)
     finally:
         card_growth.get_card_growth_rule.cache_clear()
 
@@ -193,5 +193,15 @@ def test_resource_growth_master_data_has_known_output_and_payment(monkeypatch, k
         rule = card_growth.get_card_growth_rule('growth')
         assert getattr(rule, field) == (2,)
         assert rule.output_known and rule.costs_known and rule.red_changes == (2,)
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('value', [-1, -3])
+def test_negative_count_reduction_metadata_stays_unknown(monkeypatch, value):
+    _setup(monkeypatch, [('a', 'LessonCountReduce', value), ('b', 'CostAdd', 1)])
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert not rule.output_known and not rule.lesson_count_changes
     finally:
         card_growth.get_card_growth_rule.cache_clear()

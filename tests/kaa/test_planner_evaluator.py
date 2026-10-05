@@ -1516,3 +1516,45 @@ def test_ineligible_card_preview_skips_image_properties(monkeypatch, case):
     hand = Hand()
     hand.card = card
     assert PlannerStrategy._candidate_state(state, cast(CardGameObject, hand)) is state
+
+
+@pytest.mark.parametrize('base_count,changes,expected_count,known', [
+    (3, (-1,), 2, True), (3, (-1, -1), 1, True),
+    (1, (-1,), 1, False), (2, (-3,), 2, False),
+    (2, (-2, 2), 4, False), (2, (2, -2), 2, True),
+])
+def test_count_growth_preserves_order_and_unknown_lower_bound(
+    monkeypatch, base_count, changes, expected_count, known,
+):
+    from kaa.db.card_growth import CardGrowthRule
+    from kaa.tasks.produce.new.play_cards.planner import costs
+    card = cast(SkillCard, _card('count-target',
+        _effect(ProduceExamEffectType.ExamLesson, 6, count=base_count)))
+    rule = CardGrowthRule(target_known=True, costs_known=True, output_known=True,
+                          lesson_count_changes=changes)
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda _: rule)
+    state = BattleState(remaining_turns=3, hp=20, genki=12,
+        projected_card_growth=(('count-growth', True),),
+        anomaly=AnomalyState(stance=AnomalyStance.AGGRESSIVE, enthusiasm=2))
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert result.projected_output == 8 * expected_count * 2
+    assert result.confirmed_output == (result.projected_output if known else 0)
+    assert card.play_effects[0].produce_exam_effect is not None
+    assert card.play_effects[0].produce_exam_effect.effect_count == base_count
+
+
+def test_unknown_count_growth_cannot_be_certified_by_later_addition(monkeypatch):
+    from kaa.db.card_growth import CardGrowthRule
+    from kaa.tasks.produce.new.play_cards.planner import costs
+    rules = {
+        'reduce': CardGrowthRule(target_known=True, costs_known=True, output_known=True,
+                                lesson_count_changes=(-1,)),
+        'add': CardGrowthRule(target_known=True, costs_known=True, output_known=True,
+                             lesson_count_changes=(2,)),
+    }
+    monkeypatch.setattr(costs, 'get_card_growth_rule', rules.__getitem__)
+    card = cast(SkillCard, _card('count-target', _effect(ProduceExamEffectType.ExamLesson, 6)))
+    state = BattleState(remaining_turns=3, hp=20, genki=12,
+        projected_card_growth=(('reduce', True), ('add', True)))
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert result.projected_output == 18 and result.confirmed_output == 0

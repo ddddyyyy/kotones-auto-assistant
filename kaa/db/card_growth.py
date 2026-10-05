@@ -138,8 +138,8 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
         elif kind == 'BlockAdd' and value >= 0:
             blocks.append(value)
             output_changed = True
-        elif kind == 'LessonCountAdd' and value >= 0:
-            lesson_counts.append(value)
+        elif kind in {'LessonCountAdd', 'LessonCountReduce'} and value >= 0:
+            lesson_counts.append(value if kind == 'LessonCountAdd' else -value)
             output_changed = True
         elif kind in {'LessonAdd', 'LessonReduce'}:
             lesson.append(value if kind == 'LessonAdd' else -value)

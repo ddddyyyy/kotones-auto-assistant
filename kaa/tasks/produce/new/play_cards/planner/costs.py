@@ -62,7 +62,14 @@ def projected_growth_output(
         if kind == ProduceExamEffectType.ExamLesson:
             for change in rule.lesson_changes:
                 value = max(0.0, value + change)
-            count += sum(rule.lesson_count_changes)
+            for change in rule.lesson_count_changes:
+                next_count = count + change
+                if next_count < 1:
+                    # The game's lower bound and clamping order are unverified.
+                    # Keep the last usable estimate without certifying the output.
+                    known = False
+                    continue
+                count = next_count
         elif kind == ProduceExamEffectType.ExamBlock:
             value += sum(rule.block_changes)
         elif kind == ProduceExamEffectType.ExamReview:
