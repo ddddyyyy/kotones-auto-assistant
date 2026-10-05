@@ -151,6 +151,7 @@ class CardGameObject(GameObject):
 
     _screenshot: MatLike
     _letter_rect: Rect
+    _recognition_distance: float | None = None
 
     @cached_property
     def output_preview(self) -> CardOutputPreview | None:
@@ -309,6 +310,7 @@ def locate_cards(img: MatLike):
                 card=db_card,
                 _screenshot=img,
                 _letter_rect=letter,
+                _recognition_distance=float(result.distance),
             )
             results.append(card)
             if card.card is not None:

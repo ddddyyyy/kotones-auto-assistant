@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 from .costs import play_cost, special_cost_affordability
 from .simulator import can_afford_play
+from .trace_provenance import configured_solution, local_code_provenance
 
 logger = logging.getLogger(__name__)
 TRACE_ENV = 'KAA_PLANNER_TRACE_DIR'
@@ -41,6 +42,7 @@ class DecisionTrace:
         self.path = directory / f'decisions-{uuid4().hex}.jsonl'
         self.save_inputs = save_inputs
         self.input_attempts = 0
+        self._code_provenance: dict | None = None
         self.count = 0
         self.screening_count = 0
         self.pending: int | None = None
@@ -75,6 +77,8 @@ class DecisionTrace:
             import cv2
             from kaa.kaa_context import config_name, produce_session
             session = produce_session()
+            if self._code_provenance is None:
+                self._code_provenance = local_code_provenance()
             ok, encoded = cv2.imencode('.png', frame)
             if not ok:
                 raise OSError('PNG encoding failed')
@@ -89,6 +93,8 @@ class DecisionTrace:
                 'source': 'card_recognition_snapshot',
                 'shape': list(frame.shape),
                 'profile': config_name(),
+                'code_provenance': self._code_provenance,
+                **configured_solution(),
                 'idol_card': session.idol_card if session is not None else None,
                 'scenario': session.scenario if session is not None else None,
                 # Caller-supplied label, not an independently checked Git revision.
@@ -139,6 +145,11 @@ class DecisionTrace:
                 rows.append({
                     'slot': slot,
                     'letter_rect': list(letter.xywh) if letter is not None else None,
+                    'recognition': {
+                        'asset': getattr(hand, 'res_name', None),
+                        'database_match_distance': vars(hand).get('_recognition_distance'),
+                        'ocr_confidence': None,
+                    } if hand is not None else None,
                     'card_id': card._id if card is not None else None,
                     'reason': reason,
                     'evaluation': asdict(evaluation) if evaluation is not None else None,

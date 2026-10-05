@@ -246,3 +246,60 @@ def test_input_evidence_write_failure_and_limit_do_not_break_screening(tmp_path)
     assert trace.input_attempts == 1
     trace.input_attempts = 32
     assert trace._input_evidence([hand]) == {'status': 'limit_reached'}
+
+
+
+def test_snapshot_code_provenance_is_sampled_once_and_distance_is_not_confidence(monkeypatch, tmp_path):
+    import numpy as np
+    from kaa.tasks.produce.new.play_cards.planner import decision_trace
+    calls = []
+    def provenance():
+        calls.append(1)
+        return {'package_version': 'test', 'source_sha256': 'fingerprint'}
+    monkeypatch.setattr(decision_trace, 'local_code_provenance', provenance)
+    monkeypatch.setattr(decision_trace, 'configured_solution', lambda: {
+        'configured_solution_id': 'solution', 'profile_config_sha256': 'config-hash'})
+    hand = _input_hand(card=None, res_name='asset.png', _recognition_distance=12.5,
+        _screenshot=np.zeros((2, 2, 3), dtype=np.uint8))
+    trace = DecisionTrace(tmp_path, save_inputs=True)
+    for _ in range(2):
+        trace.screening([hand], None, [], [], [], 'offline')
+    events = [json.loads(line) for line in trace.path.read_text(encoding='utf-8').splitlines()]
+    assert calls == [1]
+    assert events[0]['input_evidence']['configured_solution_id'] == 'solution'
+    assert events[0]['input_evidence']['code_provenance']['source_sha256'] == 'fingerprint'
+    assert events[0]['hands'][0]['recognition'] == {
+        'asset': 'asset.png', 'database_match_distance': 12.5, 'ocr_confidence': None}
+
+
+def test_source_fingerprint_is_order_independent_and_detects_changes(tmp_path):
+    from kaa.tasks.produce.new.play_cards.planner.trace_provenance import source_fingerprint
+    a, b = tmp_path / 'a.py', tmp_path / 'b.py'
+    a.write_text('first', encoding='utf-8')
+    b.write_text('second', encoding='utf-8')
+    digest = source_fingerprint([a, b], tmp_path)
+    assert digest is not None and source_fingerprint([b, a], tmp_path) == digest
+    b.write_text('changed', encoding='utf-8')
+    assert source_fingerprint([a, b], tmp_path) != digest
+    assert source_fingerprint([a, tmp_path / 'missing.py'], tmp_path) is None
+    assert source_fingerprint([], tmp_path) is None
+
+
+
+def test_configured_solution_records_only_id_and_config_hash(monkeypatch):
+    import hashlib
+    from kaa.tasks.produce.new.play_cards.planner import trace_provenance
+    payload = '{"secret":"not emitted","selected":"solution-id"}'
+    config = _input_hand(tasks=_input_hand(produce=_input_hand(selected_solution_id='solution-id')),
+                         model_dump_json=lambda: payload)
+    monkeypatch.setattr(trace_provenance, 'conf', lambda: config)
+    assert trace_provenance.configured_solution() == {
+        'configured_solution_id': 'solution-id',
+        'profile_config_sha256': hashlib.sha256(payload.encode('utf-8')).hexdigest(),
+    }
+    def unavailable():
+        raise RuntimeError('configuration unavailable')
+    monkeypatch.setattr(trace_provenance, 'conf', unavailable)
+    assert trace_provenance.configured_solution() == {
+        'configured_solution_id': None, 'profile_config_sha256': None,
+    }
