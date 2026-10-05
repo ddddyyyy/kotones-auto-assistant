@@ -313,9 +313,27 @@ def _fetch_exam_remaining_turns(screen: MatLike | None = None) -> int | None:
         if (
             len(results) == 1
             and results[0].text.isdecimal()
-            and results[0].confidence >= 0.98
+            and results[0].text.isascii()
             and int(results[0].text) == digits[0]
         ):
+            if results[0].confidence >= 0.98:
+                return digits[0]
+            # A small numeral can read consistently but have low confidence
+            # at native resolution. Require both enlarged versions of this
+            # same mask to agree; never recover a conflicting primary reading.
+            for scale in (2, 3):
+                enlarged = cv2.resize(
+                    mask, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST,
+                )
+                verified = en().ocr(enlarged)
+                if not (
+                    len(verified) == 1
+                    and verified[0].text.isascii()
+                    and verified[0].text.isdecimal()
+                    and verified[0].confidence >= 0.98
+                    and int(verified[0].text) == digits[0]
+                ):
+                    return None
             return digits[0]
     except Exception:
         logger.debug('Could not verify ranked remaining turns.', exc_info=True)
