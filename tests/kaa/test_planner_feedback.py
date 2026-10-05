@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from kaa.tasks.produce.new.play_cards.planner.feedback import (
     PendingPlay,
     PlayFeedbackStatus,
@@ -121,3 +123,37 @@ def test_zero_cost_resource_recovery_is_positive_evidence():
 def test_unknown_turn_fallback_cannot_confirm_same_turn_hand_change():
     pending = PendingPlay('played', replace(_state(), remaining_turns_known=False), 0, 0)
     assert evaluate_play_feedback(pending, _state(hand=('other',))).status is PlayFeedbackStatus.UNCONFIRMED
+
+
+@pytest.mark.parametrize('changes', [
+    {'hand_card_ids': ('other',), 'hand_size': 1},
+    {'hp': 7, 'genki': 8},
+    {'observed_effect_values': (('full_power_point', 8),)},
+    {'score_gap': 2},
+    {'score_target_is_final': True},
+    {'is_exam': True, 'current_score': 100},
+])
+def test_turn_advance_explains_unconfirmed_feedback_despite_visible_changes(changes):
+    before = replace(_state(final=False), is_exam=True, current_score=0)
+    pending = PendingPlay('played', before, 25, 25, requires_resource_change=True)
+    feedback = evaluate_play_feedback(pending, replace(before, remaining_turns=2, **changes))
+    assert feedback.status is PlayFeedbackStatus.UNCONFIRMED
+    assert feedback.evidence == 'turn_advanced_without_play_observation'
+
+
+@pytest.mark.parametrize('before_known,after_known,after_turn', [
+    (False, True, 2), (True, False, 2), (True, True, 4),
+])
+def test_unknown_or_increasing_turn_cannot_be_classified_as_turn_advance(
+    before_known, after_known, after_turn,
+):
+    pending = PendingPlay('played', replace(_state(), remaining_turns_known=before_known), 0, 0)
+    after = replace(_state(turn=after_turn), remaining_turns_known=after_known)
+    assert evaluate_play_feedback(pending, after).evidence == 'insufficient_evidence'
+
+
+def test_explicit_move_dialog_still_confirms_play_across_turn_boundary():
+    pending = PendingPlay('played', _state(), 0, 0, move_dialog_seen=True)
+    feedback = evaluate_play_feedback(pending, _state(turn=2))
+    assert feedback.status is PlayFeedbackStatus.CONFIRMED
+    assert feedback.evidence == 'card_move_dialog'

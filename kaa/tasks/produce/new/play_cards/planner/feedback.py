@@ -51,6 +51,16 @@ def evaluate_play_feedback(pending: PendingPlay, after: BattleState) -> PlayFeed
             PlayFeedbackStatus.CONFIRMED, 'card_move_dialog', gap_reduction
         )
 
+    if (before.remaining_turns_known and after.remaining_turns_known
+            and after.remaining_turns < before.remaining_turns):
+        # Turn-end effects and a refreshed hand cannot identify a single play.
+        # Keep speculative memory rollback even when resources or score change.
+        return PlayFeedback(
+            PlayFeedbackStatus.UNCONFIRMED,
+            'turn_advanced_without_play_observation',
+            gap_reduction,
+        )
+
     same_turn = (
         before.remaining_turns_known and after.remaining_turns_known
         and after.remaining_turns == before.remaining_turns
