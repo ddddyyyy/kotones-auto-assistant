@@ -249,6 +249,7 @@ class PlannerStrategy(AbstractBattleStrategy):
             state,
             remaining_turns=max(1, state.remaining_turns - 1),
             exam_score_percent=None,
+            observed_card_output=None,
             score_gap=None,
             score_target_is_final=None,
             playable_count=2 if anomaly.full_power_active else 1,

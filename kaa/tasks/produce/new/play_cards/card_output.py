@@ -52,6 +52,14 @@ def read_card_output_preview(screen: MatLike, letter: Rect) -> CardOutputPreview
         if len(glyphs) != 1:
             return CardOutputPreview(amount, None)
         gx, gy, gw, gh = glyphs[0]
+        # Account for all interior ink, including narrow/clipped digit fragments.
+        # The only other component allowed is the multiplication sign to the left.
+        interior = [(x, y, w, h) for x, y, w, h, area in digits[1:]
+                    if 0 < x and x+w < bw and 1 < y and y+h < bh and area >= 3]
+        markers = [(x, y, w, h) for x, y, w, h in interior
+                   if x+w < gx and 4 <= w <= 10 and 4 <= h <= 10]
+        if len(interior) != 2 or len(markers) != 1:
+            return CardOutputPreview(amount, None)
         digit = ink[gy:gy+gh, gx:gx+gw]
         digit = cv2.copyMakeBorder(digit, 4, 4, 4, 4, cv2.BORDER_CONSTANT, value=(0,))
         counts = [_integer_read(cv2.resize(digit, None, fx=k, fy=k,

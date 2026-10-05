@@ -106,9 +106,11 @@ def test_move_scroll_thumb_is_detected_without_confusing_the_track():
     assert find_move_scroll_thumb(np.full_like(screen, 240)) is None
 
 
-def test_hold_does_not_prioritize_card_unaffordable_next_turn():
+def test_hold_ranking_does_not_reuse_current_payment_or_output_observation():
     class Evaluator:
         def evaluate(self, card, state):
+            assert not state.hp_known and not state.genki_known
+            assert state.observed_card_output is None
             return CardEvaluation(
                 card_id=card._id,
                 score=100 if card._id == 'expensive' else 10,
@@ -117,8 +119,13 @@ def test_hold_does_not_prioritize_card_unaffordable_next_turn():
             )
 
     planner = PlannerStrategy(cast(Any, Evaluator()))
-    planner._last_move_state = BattleState(remaining_turns=3, hp=5, genki=0)
+    planner._last_move_state = BattleState(
+        remaining_turns=3, hp=5, genki=0, observed_card_output=('expensive', 150, 2),
+    )
     expensive = SimpleNamespace(_id='expensive', name='expensive', stamina=10, force_stamina=0)
     affordable = SimpleNamespace(_id='affordable', name='affordable', stamina=2, force_stamina=0)
 
-    assert planner.rank_move_cards(cast(Any, [expensive, affordable])) == [1, 0]
+    # Both future payment budgets are unknown; ranking uses the evaluator estimate.
+    assert planner.rank_move_cards(cast(Any, [expensive, affordable])) == [0, 1]
+    assert planner._last_move_state.hp_known and planner._last_move_state.genki_known
+    assert planner._last_move_state.observed_card_output == ('expensive', 150, 2)
