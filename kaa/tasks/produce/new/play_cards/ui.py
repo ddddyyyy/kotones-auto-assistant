@@ -17,7 +17,7 @@ from kaa.tasks import R
 from kaa.util import paths
 from kaa.image_db import ImageDatabase
 from kaa.image_db import registry
-from kaa.db.skill_card import SkillCard
+from kaa.db.skill_card import SkillCard, category_from_asset_id
 from .card_output import CardOutputPreview, read_card_output_preview
 
 DEBUG = False
@@ -272,27 +272,29 @@ def _show_rects(title: str, img: MatLike, results: list[GameObject] | list[Rect]
         cv2.rectangle(debug_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
     cv2.imshow(title, cv2.resize(debug_img, (0, 0), fx=0.5, fy=0.5))
 
-def _locate_letters(img: MatLike) -> list[Rect]:
-    # letters = AnyOf[
-    #     R.InProduce.A,
-    #     R.InProduce.M,
-    #     R.InProduce.T,
-    # ].find_all()
+def _locate_typed_letters(img: MatLike) -> list[tuple[Rect, str]]:
     x, y, w, h = R.InProduce.BoxCardLetter.xywh
-    img = img[y:y+h, x:x+w]
-    results = image.raw().find_all(img, R.InProduce.A.template)
-    results += image.raw().find_all(img, R.InProduce.M.template)
-    results += image.raw().find_all(img, R.InProduce.T.template)
-    # 需要还原为全图坐标
-    results2 = []
-    for res in results:
-        results2.append(Rect(res.rect.x1 + x, res.rect.y1 + y, res.rect.w, res.rect.h))
+    crop = img[y:y+h, x:x+w]
+    results: list[tuple[Rect, str]] = []
+    for resource, category in (
+        (R.InProduce.A, 'ProduceCardCategory_ActiveSkill'),
+        (R.InProduce.M, 'ProduceCardCategory_MentalSkill'),
+        (R.InProduce.T, 'ProduceCardCategory_Trouble'),
+    ):
+        for match in image.raw().find_all(crop, resource.template):
+            rect = match.rect
+            results.append((Rect(rect.x1 + x, rect.y1 + y, rect.w, rect.h), category))
+    _show_rects('letters', crop, [rect for rect, _ in results])
+    return results
 
-    _show_rects('letters', img, results2)
-    return results2
+
+def _locate_letters(img: MatLike) -> list[Rect]:
+    return [rect for rect, _ in _locate_typed_letters(img)]
+
 
 def locate_cards(img: MatLike):
-    letters = _locate_letters(img)
+    typed_letters = _locate_typed_letters(img)
+    letters = [letter for letter, _ in typed_letters]
     ordered_letters = sorted(letters, key=lambda item: item.center.x)
     # 根据字母的位置，计算出左半边卡面的范围
     # 字母往上 195px，往左 95px
@@ -307,11 +309,20 @@ def locate_cards(img: MatLike):
 
     # 根据图像查卡片
     results: list[CardGameObject | None] = []
-    for region, letter in zip(card_regions, letters):
+    for region, (letter, category) in zip(card_regions, typed_letters):
         x, y, w, h = region.xywh
         card_img = img[y:y+h, x:x+w]
         result_list = skill_cards_db().query(card_img, k=1, threshold=150)
-        result = result_list[0] if result_list else None
+        result = None
+        for candidate in result_list:
+            asset_id = candidate.key.removesuffix('.png')
+            for character in CharacterId:
+                asset_id = asset_id.removesuffix('-' + character.value)
+            if category_from_asset_id(asset_id) == category:
+                result = candidate
+                break
+        # A conflicting best match stays unknown; another neighbour is not proof.
+
         available = color.find(img, '#7a7d7d', rect=letter) is None
         if result is not None:
             # 从资源名称中提取 asset_id

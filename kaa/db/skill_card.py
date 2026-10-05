@@ -619,6 +619,17 @@ def _all_cached() -> tuple[SkillCard, ...]:
     return tuple(SkillCard._from_row(row, effect_map) for row in rows)
 
 
+@lru_cache(maxsize=4096)
+def category_from_asset_id(asset_id: str) -> str | None:
+    """Read only the card category for image-match filtering."""
+    row = select('SELECT category FROM ProduceCard WHERE assetId = ? '
+                 'ORDER BY upgradeCount ASC LIMIT 1;', asset_id)
+    return row['category'] if row is not None else None
+
+
+register_cache_clear(category_from_asset_id.cache_clear)
+
+
 register_cache_clear(_all_cached.cache_clear)
 
 
