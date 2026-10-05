@@ -269,7 +269,8 @@ def test_snapshot_code_provenance_is_sampled_once_and_distance_is_not_confidence
     assert events[0]['input_evidence']['configured_solution_id'] == 'solution'
     assert events[0]['input_evidence']['code_provenance']['source_sha256'] == 'fingerprint'
     assert events[0]['hands'][0]['recognition'] == {
-        'asset': 'asset.png', 'database_match_distance': 12.5, 'ocr_confidence': None}
+        'asset': 'asset.png', 'database_match_distance': 12.5, 'ocr_confidence': None,
+        'title': None, 'method': 'image'}
 
 
 def test_source_fingerprint_is_order_independent_and_detects_changes(tmp_path):
@@ -303,3 +304,15 @@ def test_configured_solution_records_only_id_and_config_hash(monkeypatch):
     assert trace_provenance.configured_solution() == {
         'configured_solution_id': None, 'profile_config_sha256': None,
     }
+
+
+def test_title_identity_trace_keeps_ocr_confidence_separate_from_image_distance(tmp_path):
+    hand = _input_hand(card=None, res_name='canonical.png',
+        _recognition_distance=None, _recognition_title='輝け!',
+        _recognition_title_confidence=0.995)
+    trace = DecisionTrace(tmp_path)
+    trace.screening([hand], None, [], [], [], 'offline')
+    event = json.loads(trace.path.read_text(encoding='utf-8').splitlines()[0])
+    assert event['hands'][0]['recognition'] == {
+        'asset': 'canonical.png', 'database_match_distance': None,
+        'ocr_confidence': 0.995, 'title': '輝け!', 'method': 'title'}

@@ -148,7 +148,9 @@ class DecisionTrace:
                     'recognition': {
                         'asset': getattr(hand, 'res_name', None),
                         'database_match_distance': vars(hand).get('_recognition_distance'),
-                        'ocr_confidence': None,
+                        'ocr_confidence': vars(hand).get('_recognition_title_confidence'),
+                        'title': vars(hand).get('_recognition_title'),
+                        'method': 'title' if vars(hand).get('_recognition_title') else 'image',
                     } if hand is not None else None,
                     'card_id': card._id if card is not None else None,
                     'reason': reason,

@@ -11,13 +11,16 @@ from kaa.db.constants import CharacterId
 from kotonebot import image
 from kotonebot.primitives import Rect
 from kotonebot.core import GameObject
+from kotonebot.backend.ocr import jp
 from kotonebot.backend import color
 
 from kaa.tasks import R
 from kaa.util import paths
 from kaa.image_db import ImageDatabase
 from kaa.image_db import registry
-from kaa.db.skill_card import SkillCard, category_from_asset_id
+from kaa.db.skill_card import (
+    SkillCard, category_from_asset_id, asset_from_card_title, normalize_card_title,
+)
 from .card_output import CardOutputPreview, read_card_output_preview
 
 DEBUG = False
@@ -175,6 +178,8 @@ class CardGameObject(GameObject):
     _screenshot: MatLike
     _letter_rect: Rect
     _recognition_distance: float | None = None
+    _recognition_title: str | None = None
+    _recognition_title_confidence: float | None = None
 
     @cached_property
     def output_preview(self) -> CardOutputPreview | None:
@@ -292,6 +297,38 @@ def _locate_letters(img: MatLike) -> list[Rect]:
     return [rect for rect, _ in _locate_typed_letters(img)]
 
 
+def _read_card_title(
+    img: MatLike, letter: Rect, next_letter: Rect | None,
+) -> tuple[str, float] | None:
+    """Verify an exposed title on the current frame, independently of artwork."""
+    if next_letter is not None and next_letter.center.x - letter.center.x < 200:
+        return None
+    x, y = int(letter.center.x), letter.y1
+    if x < 100 or x + 100 > img.shape[1] or y + 20 < 0 or y + 46 > img.shape[0]:
+        return None
+    crop = img[y+20:y+46, x-100:x+100]
+    readings: list[tuple[str, float]] = []
+    confident_titles: set[str] = set()
+    try:
+        for scale in (1, 2, 3):
+            enlarged = cv2.resize(crop, None, fx=scale, fy=scale)
+            results = jp().ocr(enlarged)
+            confident_titles.update(
+                normalize_card_title(result.text) for result in results
+                if result.confidence >= 0.98
+            )
+            if len(results) == 1 and results[0].confidence >= 0.98:
+                title = normalize_card_title(results[0].text)
+                if title:
+                    readings.append((title, results[0].confidence))
+    except Exception:
+        logger.debug('Could not verify card title.', exc_info=True)
+        return None
+    if len(readings) < 2 or len(confident_titles) != 1:
+        return None
+    return readings[0][0], min(confidence for _, confidence in readings)
+
+
 def locate_cards(img: MatLike):
     typed_letters = _locate_typed_letters(img)
     letters = [letter for letter, _ in typed_letters]
@@ -321,34 +358,44 @@ def locate_cards(img: MatLike):
             if category_from_asset_id(asset_id) == category:
                 result = candidate
                 break
-        # A conflicting best match stays unknown; another neighbour is not proof.
+        index = ordered_letters.index(letter)
+        next_letter = ordered_letters[index + 1] if index + 1 < len(ordered_letters) else None
+        title_reading = None
+        card_id = None
+        if result is not None:
+            card_id = result.key.removesuffix('.png')
+            for character in CharacterId:
+                card_id = card_id.removesuffix('-' + character.value)
+        elif result_list:
+            # Another image neighbour alone is not proof. Recover only from
+            # independently verified, uniquely resolved same-frame title text.
+            title_reading = _read_card_title(img, letter, next_letter)
+            if title_reading is not None:
+                card_id = asset_from_card_title(title_reading[0], category)
 
         available = color.find(img, '#7a7d7d', rect=letter) is None
-        if result is not None:
-            # 从资源名称中提取 asset_id
-            card_id = result.key.removesuffix('.png')
-            for c in CharacterId:
-                suffix = '-' + c.value
-                card_id = card_id.removesuffix(suffix)
+        if card_id is not None:
             # 查数据库
             # The marker is visible on any sufficiently separated card, not
             # just the rightmost one. With a crowded hand the next card covers
             # it; never interpret that occlusion as evidence of a base card.
-            index = ordered_letters.index(letter)
-            next_letter = ordered_letters[index + 1] if index + 1 < len(ordered_letters) else None
             upgrade_count = _observed_upgrade_count(img, letter, next_letter)
             db_card = SkillCard.from_asset_id(card_id, upgrade_count)
             card = CardGameObject(
                 rect=region,
-                res_name=result.key,
+                res_name=result.key if result is not None else card_id + '.png',
                 card=db_card,
                 _screenshot=img,
                 _letter_rect=letter,
-                _recognition_distance=float(result.distance),
+                _recognition_distance=float(result.distance) if result is not None else None,
+                _recognition_title=title_reading[0] if title_reading is not None else None,
+                _recognition_title_confidence=title_reading[1] if title_reading is not None else None,
             )
             results.append(card)
             if card.card is not None:
-                logger.info(f'Matched skill card: {card.res_name}({card.card.name}) | dist={result.distance:.2f} available={available}')
+                logger.info('Matched skill card: %s(%s) | dist=%s title=%s available=%s',
+                            card.res_name, card.card.name, card._recognition_distance,
+                            card._recognition_title, available)
             else:
                 logger.warning(f'Found skill card {card.res_name} but no database match found.')
         else:
@@ -366,7 +413,9 @@ def locate_cards(img: MatLike):
             draw_rect = res.rect.copy()
             orig_card_path = os.path.join(paths.resource('skill_cards'), res.res_name)
             orig_card_img = cv2.imread(orig_card_path)
-            assert orig_card_img is not None
+            if orig_card_img is None:
+                # A title identity need not select a character artwork variant.
+                continue
             orig_card_img = cv2.resize(orig_card_img, None, fx=CARD_SCALE, fy=CARD_SCALE)
             x1, y1 = draw_rect.top_left
             x2, y2 = x1 + orig_card_img.shape[1], y1 + orig_card_img.shape[0]

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from functools import cached_property, lru_cache
 import json
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -625,6 +626,30 @@ def category_from_asset_id(asset_id: str) -> str | None:
     row = select('SELECT category FROM ProduceCard WHERE assetId = ? '
                  'ORDER BY upgradeCount ASC LIMIT 1;', asset_id)
     return row['category'] if row is not None else None
+
+
+def normalize_card_title(title: str) -> str:
+    """Normalize typography and a visible upgrade suffix, never fuzzy-match names."""
+    return unicodedata.normalize('NFKC', title).strip().rstrip('+')
+
+
+@lru_cache(maxsize=1)
+def _assets_by_title() -> dict[tuple[str, str], str | None]:
+    candidates: dict[tuple[str, str], set[str]] = {}
+    for row in select_many('SELECT name, category, assetId FROM ProduceCard '
+                           'WHERE upgradeCount = 0;'):
+        key = (normalize_card_title(row['name']), row['category'])
+        candidates.setdefault(key, set()).add(row['assetId'])
+    return {key: next(iter(assets)) if len(assets) == 1 else None
+            for key, assets in candidates.items()}
+
+
+def asset_from_card_title(title: str, category: str) -> str | None:
+    """Return only a unique exact title/category identity from current game data."""
+    return _assets_by_title().get((normalize_card_title(title), category))
+
+
+register_cache_clear(_assets_by_title.cache_clear)
 
 
 register_cache_clear(category_from_asset_id.cache_clear)
