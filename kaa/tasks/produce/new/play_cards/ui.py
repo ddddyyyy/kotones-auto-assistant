@@ -318,10 +318,19 @@ def _read_card_title(
         return None
     crop = img[y+20:y+46, x-100:x+100]
     _, suffix_start = _title_upgrade_suffix(crop)
-    if suffix_start is not None:
-        # The upgrade crosses are not part of the base identity. Isolate the
-        # name only at a detected glyph boundary, without guessing its text.
-        crop = crop[:, :suffix_start]
+    # A frame at the left edge can be recognized as a leading '1'. Remove
+    # only a thin component touching both vertical crop edges; title glyphs
+    # leave padding above and below. Do not delete characters from OCR text.
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    _, _, components, _ = cv2.connectedComponentsWithStats((gray < 150).astype('uint8'))
+    frame_end = max(
+        (int(cx + width) for cx, cy, width, height, _area in components[1:]
+         if cx <= 12 and cy == 0 and width <= 8 and height == crop.shape[0]),
+        default=0,
+    )
+    # Upgrade crosses are not part of the base identity. Both limits come
+    # from components on this crop, without guessing or changing its text.
+    crop = crop[:, frame_end:suffix_start]
     if crop.size == 0:
         return None
     readings: list[tuple[str, float]] = []
