@@ -75,13 +75,14 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
     if effect is None:
         return CardGrowthRule()
     search = select('SELECT * FROM ProduceCardSearch WHERE id = ?', effect._produce_card_search_id or '')
-    categories = tuple(parse_id_list(search['cardCategories'])) if search else ()
+    categories = _effect_groups(search['cardCategories']) if search else None
     groups = _effect_groups(search['effectGroupIds']) if search else None
     card_ids = _effect_groups(search['produceCardIds']) if search else None
     target_known = bool(search) and all((
         search['cardPositionType'] == 'ProduceCardPositionType_DeckAll',
-        not parse_id_list(search['cardRarities']), card_ids is not None and len(card_ids) <= 1,
-        not parse_id_list(search['upgradeCounts']), groups is not None and len(groups) <= 1,
+        categories is not None,
+        _effect_groups(search['cardRarities']) == (), card_ids is not None and len(card_ids) <= 1,
+        _effect_groups(search['upgradeCounts']) == (), groups is not None and len(groups) <= 1,
         search['planType'] in {'', 'ProducePlanType_Unknown'},
         search['cardStatusType'] in {'', 'ProduceCardSearchStatusType_Unknown'},
         search['orderType'] in {'', 'ProduceCardOrderType_Unknown'},
@@ -154,7 +155,7 @@ def get_card_growth_rule(effect_id: str) -> CardGrowthRule:
                 'CardStatusEnchantChange',
             }:
                 known = False
-    return CardGrowthRule(categories, target_known, tuple(green), tuple(red), known,
+    return CardGrowthRule(categories or (), target_known, tuple(green), tuple(red), known,
                           output_changed, tuple(lesson), output_known, groups, card_ids, tuple(lesson_counts), tuple(blocks),
                           tuple(reviews), tuple(full_power))
 

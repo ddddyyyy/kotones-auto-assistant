@@ -205,3 +205,37 @@ def test_negative_count_reduction_metadata_stays_unknown(monkeypatch, value):
         assert not rule.output_known and not rule.lesson_count_changes
     finally:
         card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('key', ['cardCategories', 'cardRarities', 'upgradeCounts'])
+@pytest.mark.parametrize('raw', [None, '', 'invalid-json', '{}', 'null', '[1]', '[""]'])
+def test_missing_or_malformed_growth_selectors_cannot_prove_payment(monkeypatch, key, raw):
+    from kaa.tasks.produce.new.play_cards.planner.costs import projected_growth_payment
+    from kaa.tasks.produce.new.play_cards.planner.simulator import can_afford_play
+    from kaa.tasks.produce.new.play_cards.planner.state import BattleState
+
+    _, search = _setup(monkeypatch, [('a', 'CostReduce', 4), ('b', 'LessonAdd', 10)])
+    search[key] = raw
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        card = cast(Any, SimpleNamespace(_id='candidate', category='ProduceCardCategory_ActiveSkill',
+            stamina=4, force_stamina=0, cost_type=None, cost_value=0, play_effects=[]))
+        assert not rule.target_known and rule.matches(card) is None
+        state = BattleState(remaining_turns=3, hp=0, genki=0,
+            projected_effect_values=(), projected_card_growth=(('growth', True),))
+        assert projected_growth_payment(state, card) == (4, 0, False)
+        assert can_afford_play(state, card) is None
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
+
+
+@pytest.mark.parametrize('key', ['cardCategories', 'cardRarities', 'upgradeCounts'])
+def test_explicit_empty_growth_selectors_remain_unrestricted(monkeypatch, key):
+    _, search = _setup(monkeypatch, [('a', 'CostReduce', 4), ('b', 'LessonAdd', 10)])
+    search[key] = '[]'
+    try:
+        rule = card_growth.get_card_growth_rule('growth')
+        assert rule.target_known
+        assert rule.matches(cast(Any, SimpleNamespace(category='ProduceCardCategory_ActiveSkill'))) is True
+    finally:
+        card_growth.get_card_growth_rule.cache_clear()
