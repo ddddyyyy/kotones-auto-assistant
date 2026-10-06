@@ -275,7 +275,10 @@ def _read_effect_value(
     value, count = votes.most_common(1)[0]
     if effect in {'full_power_point', 'aggressive'}:
         competing = sum(v for k, v in votes.items() if k != value)
-        return value if count >= 3 and competing < 2 else None
+        # A 4-to-1 vote can still be wrong (37 read as 57 in a live crop).
+        # Conflicting aggressive digits remain unknown; no historical override.
+        allowed_competing = 0 if effect == 'aggressive' else 1
+        return value if count >= 3 and competing <= allowed_competing else None
     return value if count >= 2 else None
 
 
