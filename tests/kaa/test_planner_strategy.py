@@ -375,35 +375,36 @@ def test_strategy_preserves_verified_large_genki_from_page(monkeypatch):
     assert state.genki_known
 
 
-def test_hp_ocr_stray_prefix_uses_prior_hp(monkeypatch, caplog):
+@pytest.mark.parametrize('is_exam', [False, True])
+@pytest.mark.parametrize('prior,observed', [(21, 921), (2, 920), (21, 121), (20, 29)])
+def test_verified_hp_observation_is_not_rewritten_by_history(monkeypatch, prior, observed, is_exam):
     monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
-    strategy = PlannerStrategy(FakeEvaluator({'card': 1}), is_exam=True)
+    strategy = PlannerStrategy(FakeEvaluator({'card': 1}), is_exam=is_exam)
+    strategy._last_move_state = BattleState(remaining_turns=7, hp=prior, genki=0)
+    ctx = FakeContext([_hand('card')])
+    # These are page-layer results, after same-crop verification, not raw OCR.
+    setattr(ctx, 'fetch_exam_hp' if is_exam else 'fetch_hp', lambda: observed)
+
+    state = strategy._build_observed_state(cast(Any, ctx), cast(Any, ctx.hands))
+
+    assert state.observed_hp == observed
+    assert state.hp == observed
+    assert state.hp_known
+
+
+@pytest.mark.parametrize('is_exam', [False, True])
+def test_unknown_hp_observation_is_not_recovered_from_history(monkeypatch, is_exam):
+    monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
+    strategy = PlannerStrategy(FakeEvaluator({'card': 1}), is_exam=is_exam)
     strategy._last_move_state = BattleState(remaining_turns=7, hp=21, genki=0)
     ctx = FakeContext([_hand('card')])
-    setattr(ctx, 'fetch_exam_hp', lambda: 921)
-    setattr(ctx, 'fetch_exam_stamina', lambda: 0)
+    setattr(ctx, 'fetch_exam_hp' if is_exam else 'fetch_hp', lambda: None)
 
-    caplog.set_level('WARNING', logger=strategy_module.__name__)
     state = strategy._build_observed_state(cast(Any, ctx), cast(Any, ctx.hands))
 
-    assert state.hp == 21
-    assert state.hp_known
-    assert 'corrected suspect hp OCR 921 to 21' in caplog.text
-
-
-def test_hp_ocr_marks_uncorroborated_three_digit_value_unknown(monkeypatch, caplog):
-    monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
-    strategy = PlannerStrategy(FakeEvaluator({'card': 1}))
-    strategy._last_move_state = BattleState(remaining_turns=7, hp=2, genki=0)
-    ctx = FakeContext([_hand('card')])
-    setattr(ctx, 'fetch_hp', lambda: 920)
-
-    caplog.set_level('WARNING', logger=strategy_module.__name__)
-    state = strategy._build_observed_state(cast(Any, ctx), cast(Any, ctx.hands))
-
+    assert state.observed_hp is None
     assert state.hp == 0
     assert not state.hp_known
-    assert 'discarded suspect hp OCR 920' in caplog.text
 
 
 def test_hp_ocr_keeps_corroborated_large_hp(monkeypatch):

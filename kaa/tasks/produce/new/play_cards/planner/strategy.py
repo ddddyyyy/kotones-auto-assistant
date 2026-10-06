@@ -670,7 +670,9 @@ class PlannerStrategy(AbstractBattleStrategy):
             if self._is_exam else ctx.fetch_stamina
         )
         observed_hp = fetch_hp()
-        hp = self._reconcile_hp_ocr(observed_hp)
+        # The page verifies this value against the current crop. Historical
+        # predictions must not trim or reject an accepted observation.
+        hp = observed_hp
         observed_genki = fetch_genki()
         genki = observed_genki
         return BattleState(
@@ -721,27 +723,3 @@ class PlannerStrategy(AbstractBattleStrategy):
             anomaly=self._memory.anomaly,
             buffs=self._memory.buffs,
         )
-
-    def _reconcile_hp_ocr(self, observed: int | None) -> int | None:
-        """Correct a corroborated prefix; mark ambiguous three-digit HP unknown."""
-        previous = self._last_move_state
-        if (
-            observed is None
-            or previous is None
-            or not previous.hp_known
-            or not 0 <= previous.hp < 100
-            or not 100 <= observed < 1000
-        ):
-            return observed
-        suffix = observed % 100
-        if abs(suffix - previous.hp) > 12:
-            logger.warning(
-                'Planner discarded suspect hp OCR %d (predicted %d)',
-                observed, previous.hp,
-            )
-            return None
-        logger.warning(
-            'Planner corrected suspect hp OCR %d to %d (predicted %d)',
-            observed, suffix, previous.hp,
-        )
-        return suffix
