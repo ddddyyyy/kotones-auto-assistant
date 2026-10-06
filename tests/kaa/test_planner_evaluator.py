@@ -809,6 +809,7 @@ def test_fractional_output_is_not_a_hard_one_point_clear_guarantee():
         score_gap=1, score_target_is_final=False,
         anomaly=AnomalyState(stance=AnomalyStance.PRESERVATION_2),
         buffs=ExamBuffState(parameter_buff_turns=6),
+        observed_effect_values=(('parameter_buff', 6),),
     )
 
     result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
@@ -1288,7 +1289,8 @@ def test_each_scoring_segment_uses_its_own_parameter_buff_multiplier():
                  _effect(ProduceExamEffectType.ExamParameterBuff, 0, turn=2),
                  _effect(ProduceExamEffectType.ExamLesson, 10))
     result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
-        BattleState(remaining_turns=3, hp=20, genki=10))
+        BattleState(remaining_turns=3, hp=20, genki=10,
+            observed_effect_values=(('parameter_buff', 0),)))
     assert result.projected_output == result.confirmed_output == 25
 
 

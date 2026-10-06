@@ -308,6 +308,7 @@ class EffectHeuristicEvaluator:
             if value != base_value or count != base_count:
                 reasons.append('成长参数预测')
             output_multiplier = self._output_multiplier(effect_state)
+            output_inputs_known &= self._output_multiplier_known(effect_state)
 
             def trusted_balance(name: str, modeled: int) -> bool:
                 value_read = dict(effect_state.effect_values_for_planning).get(name)
@@ -628,6 +629,22 @@ class EffectHeuristicEvaluator:
             projected_output=projected_output,
             confirmed_output=confirmed_output,
         )
+
+    @staticmethod
+    def _output_multiplier_known(state: BattleState) -> bool:
+        """Do not certify output from stale or invalidated search multipliers."""
+        if state.projected_effect_values is None:
+            return True
+        values = dict(state.projected_effect_values)
+        for name, modeled in (
+            ('parameter_buff', state.buffs.parameter_buff_turns),
+            ('parameter_buff_multiple', state.buffs.parameter_buff_multiple_turns),
+        ):
+            if name in values or modeled > 0:
+                projected = values.get(name)
+                if projected is None or projected != modeled:
+                    return False
+        return True
 
     @staticmethod
     def _output_multiplier(state: BattleState) -> float:

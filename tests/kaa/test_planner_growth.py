@@ -155,7 +155,8 @@ def test_lesson_growth_is_applied_before_enthusiasm_and_each_hit_multiplier(monk
     monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
         lesson_changes=(5,), output_known=True))
     state = replace(_state(hp=100), anomaly=AnomalyState(stance=AnomalyStance.AGGRESSIVE, enthusiasm=2),
-                    buffs=ExamBuffState(parameter_buff_turns=2))
+                    buffs=ExamBuffState(parameter_buff_turns=2),
+                    projected_effect_values=(('parameter_buff', 2),))
     result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(count=2),)), state)
     assert result.projected_output == result.confirmed_output == 102
 
@@ -677,3 +678,64 @@ def test_unmodeled_genki_change_does_not_confirm_in_card_conversion():
     evaluation = EffectHeuristicEvaluator().evaluate(card, initial)
     assert evaluation.projected_output == 20
     assert evaluation.confirmed_output == 0
+
+
+@pytest.mark.parametrize('resource,field,multiplier', [
+    ('parameter_buff', 'parameter_buff_turns', 1.5),
+    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 1.1),
+])
+@pytest.mark.parametrize('reading,expected_known', [
+    ('missing', False), (None, False), (0, False), (3, False), (5, True),
+])
+def test_projected_output_multiplier_requires_trusted_balance(resource, field, multiplier, reading, expected_known):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    values = () if reading == 'missing' else ((resource, reading),)
+    state = replace(_state(hp=20, growth=()), buffs=ExamBuffState(**{field: 5}),
+        projected_effect_values=values, observed_effect_values=((resource, 5),))
+    evaluation = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(value=10),)), state)
+    assert evaluation.projected_output == pytest.approx(10 * multiplier)
+    assert evaluation.confirmed_output == pytest.approx(10 * multiplier if expected_known else 0)
+    assert state.observed_effect_values == ((resource, 5),)
+
+
+@pytest.mark.parametrize('resource', ['parameter_buff', 'parameter_buff_multiple'])
+@pytest.mark.parametrize('reading,expected', [(None, 0), (0, 10)])
+def test_unknown_zero_multiplier_balance_is_not_confirmed_absence(resource, reading, expected):
+    state = replace(_state(hp=20, growth=()), projected_effect_values=((resource, reading),))
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)), state)
+    assert result.projected_output == 10
+    assert result.confirmed_output == expected
+
+
+@pytest.mark.parametrize('resource,field,kind,multiplier', [
+    ('parameter_buff', 'parameter_buff_turns', 'ExamParameterBuff', 1.5),
+    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 'ExamParameterBuffMultiplePerTurn', 1.1),
+])
+@pytest.mark.parametrize('unknown_growth', [False, True])
+def test_unknown_setup_growth_does_not_certify_next_card_multiplier(
+    monkeypatch, resource, field, kind, multiplier, unknown_growth,
+):
+    from kaa.db import card_status_enchant as db
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    monkeypatch.setattr(db, 'get_card_status_enchant', lambda _: SimpleNamespace(
+        cost_changed=False, output_changed=unknown_growth))
+    initial = replace(_state(hp=20, growth=()), buffs=ExamBuffState(**{field: 5}),
+        projected_effect_values=((resource, 5),), observed_effect_values=((resource, 5),))
+    setup = _card(green=0, effects=(_output(getattr(ProduceExamEffectType, kind), 2),))
+    setup._produce_card_status_enchant_id = 'enchant'
+    after = simulate_play(initial, setup)
+    evaluation = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)), after)
+    assert evaluation.projected_output == pytest.approx(10 * multiplier)
+    assert evaluation.confirmed_output == pytest.approx(0 if unknown_growth else 10 * multiplier)
+
+
+@pytest.mark.parametrize('reading,bonus', [(None, False), (5, True)])
+def test_unknown_multiplier_cannot_claim_certain_perfect_target(reading, bonus):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    state = replace(_state(hp=20, growth=()), buffs=ExamBuffState(parameter_buff_turns=5),
+        score_gap=10, score_target_is_final=True,
+        projected_effect_values=(('parameter_buff', reading),))
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)), state)
+    assert result.projected_output == 15
+    assert ('足量达标' in result.reason) == bonus
+    assert result.confirmed_output == (15 if bonus else 0)
