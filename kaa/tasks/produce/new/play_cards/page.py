@@ -255,6 +255,16 @@ def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
             verified = int(reading)
             logger.warning('Verified genki OCR %d as %d from same crop.', value, verified)
             return verified
+        if 1 <= value <= 99 and reading == raw + '0':
+            # Otsu can drop the outlined trailing zero. Recover only when
+            # the original color classifier and high-confidence independent
+            # OCR agree on this same crop; genuine conflicts stay unknown.
+            ok, encoded = cv2.imencode('.png', crop)
+            if ok:
+                color_text = _dddd().classification(encoded.tobytes())
+                if isinstance(color_text, str) and re.findall(r'\d+', color_text) == [reading]:
+                    logger.debug('Verified missing genki trailing zero %d as %s.', value, reading)
+                    return int(reading)
     except Exception:
         logger.debug('Could not verify genki reading.', exc_info=True)
     return None

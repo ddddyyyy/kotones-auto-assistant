@@ -464,3 +464,42 @@ def test_genki_prefix_requires_independent_same_crop_confirmation(
         ocr=lambda image: [SimpleNamespace(text=independent, confidence=confidence)]))
     raw = 713 if independent == '13' else 117
     assert page._verify_genki_reading(np.zeros((38, 54, 3), dtype=np.uint8), raw) == expected
+
+
+def test_live_genki_trailing_zero_10_has_original_crop_corroboration():
+    raw = Path(__file__).with_name('genki_trailing_zero_10.png.b64').read_text(encoding='ascii')
+    crop = cv2.imdecode(np.frombuffer(base64.b64decode(raw), dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert _digits_from_image(crop, fallback_raw=True) == [1]
+    assert page._verify_genki_reading(crop, 1) == 10
+
+
+@pytest.mark.parametrize('raw,reading,color,confidence,expected', [
+    (1, '10', ')10', 0.999, 10),
+    (2, '20', '20', 0.999, 20),
+    (10, '100', '100', 0.999, 100),
+    (17, '170', '170', 0.999, 170),
+    (1, '10', '1', 0.999, None),
+    (1, '10', '11', 0.999, None),
+    (1, '10', '10 1', 0.999, None),
+    (1, '10', '', 0.999, None),
+    (1, '10', '10', 0.979, None),
+    (1, '11', '11', 0.999, None),
+    (1, '100', '100', 0.999, None),
+    (0, '00', '00', 0.999, None),
+    (1, '010', '010', 0.999, None),
+    (1, '１0', '１0', 0.999, None),
+])
+def test_genki_trailing_zero_requires_original_color_and_independent_agreement(
+    monkeypatch, raw, reading, color, confidence, expected,
+):
+    monkeypatch.setattr(page, 'en', lambda: SimpleNamespace(
+        ocr=lambda image: [SimpleNamespace(text=reading, confidence=confidence)]))
+    monkeypatch.setattr(page, '_dddd', lambda: SimpleNamespace(classification=lambda data: color))
+    assert page._verify_genki_reading(np.zeros((38, 85, 3), dtype=np.uint8), raw) == expected
+
+
+def test_genki_trailing_zero_encoding_failure_stays_unknown(monkeypatch):
+    monkeypatch.setattr(page, 'en', lambda: SimpleNamespace(
+        ocr=lambda image: [SimpleNamespace(text='10', confidence=0.999)]))
+    monkeypatch.setattr(page.cv2, 'imencode', lambda *args: (False, None))
+    assert page._verify_genki_reading(np.zeros((38, 85, 3), dtype=np.uint8), 1) is None
