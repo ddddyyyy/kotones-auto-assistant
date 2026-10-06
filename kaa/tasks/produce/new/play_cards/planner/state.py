@@ -145,6 +145,14 @@ class BattleState:
     grants. This does not claim the restriction was observed on the HUD.
     """
 
+    projected_resource_gain_modifiers: frozenset[str] = frozenset()
+    """Possible unmodeled gain modifiers, carried only by search states.
+
+    They leave the current balance intact but prevent certifying a later
+    matching grant. Expiry and amounts are unverified; fresh HUD snapshots
+    rebuild state rather than treating this marker as an observation.
+    """
+
     observed_card_output: tuple[str, int, int] | None = None
     """Candidate-local current header (card kind, per-hit, count), ranking only.
 

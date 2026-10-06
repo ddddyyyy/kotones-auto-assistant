@@ -32,6 +32,25 @@ _RESOURCE_EFFECTS = {
 }
 
 
+_RESOURCE_GAIN_EFFECTS = {
+    ProduceExamEffectType.ExamLessonBuff,
+    ProduceExamEffectType.ExamReview,
+    ProduceExamEffectType.ExamCardPlayAggressive,
+    ProduceExamEffectType.ExamParameterBuff,
+    ProduceExamEffectType.ExamParameterBuffMultiplePerTurn,
+    ProduceExamEffectType.ExamFullPowerPoint,
+}
+_RESOURCE_GAIN_MODIFIERS = {
+    ProduceExamEffectType.ExamAggressiveAdditive: 'aggressive',
+    ProduceExamEffectType.ExamAggressiveAdditiveFix: 'aggressive',
+    ProduceExamEffectType.ExamLessonBuffAdditive: 'lesson_buff',
+    ProduceExamEffectType.ExamLessonBuffAdditiveFix: 'lesson_buff',
+    ProduceExamEffectType.ExamParameterBuffAdditive: 'parameter_buff',
+    ProduceExamEffectType.ExamReviewAdditive: 'review',
+    ProduceExamEffectType.ExamFullPowerPointAdditive: 'full_power_point',
+}
+
+
 _UNMODELED_SPECIAL_RESOURCE_EFFECTS = {
     ProduceExamEffectType.ExamAggressiveValueMultiple: 'aggressive',
     ProduceExamEffectType.ExamLessonBuffDependParameterBuff: 'lesson_buff',
@@ -162,6 +181,10 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         ProduceExamEffectType.ExamBlockRestriction: 'genki_gain',
         ProduceExamEffectType.ExamStaminaRecoverRestriction: 'hp_recovery',
     }
+    gain_modifiers = set(
+        state.projected_resource_gain_modifiers
+        if state.projected_effect_values is not None else ()
+    )
     growth = list(state.projected_card_growth)
     uncertain_balances = growth_uncertain_balances
     unmodeled_zero_balances: set[str] = set()
@@ -184,6 +207,16 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if verdict != TriggerVerdict.INACTIVE:
+            if effect.effect_type in _RESOURCE_GAIN_MODIFIERS:
+                gain_modifiers.add(_RESOURCE_GAIN_MODIFIERS[effect.effect_type])
+            if (
+                effect.effect_type in _RESOURCE_GAIN_EFFECTS
+                and _RESOURCE_EFFECTS[effect.effect_type] in gain_modifiers
+            ):
+                # The prior balance remains valid until a matching grant uses
+                # this uncalibrated modifier; reductions are unaffected.
+                uncertain_balances.add(_RESOURCE_EFFECTS[effect.effect_type])
         if (
             verdict != TriggerVerdict.INACTIVE
             and effect.effect_type in _UNMODELED_SPECIAL_RESOURCE_EFFECTS
@@ -314,6 +347,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         hp_known=hp_known,
         genki_known=genki_known,
         projected_resource_restrictions=frozenset(restrictions),
+        projected_resource_gain_modifiers=frozenset(gain_modifiers),
         projected_card_growth=tuple(growth),
     )
 

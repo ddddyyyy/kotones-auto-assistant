@@ -897,3 +897,82 @@ def test_fixed_gain_does_not_restore_balance_after_unmodeled_direct_change(kind,
         _output(getattr(ProduceExamEffectType, gain), 3))))
     assert dict(after.effect_values_for_planning)[resource] is None
     assert getattr(after.buffs, resource) == 8
+
+
+_GAIN_MODIFIER_CASES = [
+    ('ExamAggressiveAdditive', 'aggressive', 'ExamCardPlayAggressive'),
+    ('ExamAggressiveAdditiveFix', 'aggressive', 'ExamCardPlayAggressive'),
+    ('ExamLessonBuffAdditive', 'lesson_buff', 'ExamLessonBuff'),
+    ('ExamLessonBuffAdditiveFix', 'lesson_buff', 'ExamLessonBuff'),
+    ('ExamParameterBuffAdditive', 'parameter_buff', 'ExamParameterBuff'),
+    ('ExamReviewAdditive', 'review', 'ExamReview'),
+    ('ExamFullPowerPointAdditive', 'full_power_point', 'ExamFullPowerPoint'),
+]
+
+
+def _all_known_resource_state():
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState, AnomalyState
+    return replace(_state(hp=20, growth=()),
+        buffs=ExamBuffState(lesson_buff=5, review=5, aggressive=5,
+            parameter_buff_turns=5, parameter_buff_multiple_turns=5),
+        anomaly=AnomalyState(full_power_points=5),
+        projected_effect_values=tuple((name, 5) for name in costs.SPECIAL_COST_EFFECTS.values()))
+
+
+@pytest.mark.parametrize('kind,resource,gain', _GAIN_MODIFIER_CASES)
+@pytest.mark.parametrize('verdict', list(TriggerVerdict))
+def test_gain_modifier_preserves_current_budget_but_uncertifies_later_matching_gain(monkeypatch, kind, resource, gain, verdict):
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    initial = _all_known_resource_state()
+    setup = _card(green=0, effects=(_output(getattr(ProduceExamEffectType, kind), 500),))
+    after_setup = simulate_play(initial, setup)
+    assert after_setup.effect_values_for_planning == initial.effect_values_for_planning
+    possible = verdict != TriggerVerdict.INACTIVE
+    assert getattr(after_setup, 'projected_resource_gain_modifiers', frozenset()) == (
+        frozenset({resource}) if possible else frozenset())
+    fee = _card(green=0)
+    fee.cost_type = next(key for key, value in costs.SPECIAL_COST_EFFECTS.items() if value == resource)
+    fee.cost_value = 1
+    assert can_afford_play(after_setup, fee) is True
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.ACTIVE)
+    after_gain = simulate_play(after_setup, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, gain), 8),)))
+    values = dict(after_gain.effect_values_for_planning)
+    assert values[resource] == (None if possible else (8 if resource == 'parameter_buff' else 13))
+    assert all(value == 5 for key, value in values.items() if key != resource)
+
+
+@pytest.mark.parametrize('before_gain', [False, True])
+def test_in_card_gain_modifier_respects_segment_order(before_gain):
+    grant = _output(ProduceExamEffectType.ExamReview, 3)
+    modifier = _output(ProduceExamEffectType.ExamReviewAdditive, 500)
+    effects = (modifier, grant) if before_gain else (grant, modifier)
+    after = simulate_play(_all_known_resource_state(), _card(green=0, effects=effects))
+    assert dict(after.effect_values_for_planning)['review'] == (None if before_gain else 8)
+    later = simulate_play(after, _card(green=0, effects=(grant,)))
+    assert dict(later.effect_values_for_planning)['review'] is None
+
+
+@pytest.mark.parametrize('modifier,resource,reduction', [
+    ('ExamLessonBuffAdditive', 'lesson_buff', 'ExamLessonBuffReduce'),
+    ('ExamReviewAdditive', 'review', 'ExamReviewReduce'),
+    ('ExamAggressiveAdditive', 'aggressive', 'ExamAggressiveReduce'),
+    ('ExamFullPowerPointAdditive', 'full_power_point', 'ExamFullPowerPointReduce'),
+])
+def test_gain_modifier_does_not_change_known_resource_reduction(modifier, resource, reduction):
+    setup = simulate_play(_all_known_resource_state(), _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, modifier), 500),)))
+    after = simulate_play(setup, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, reduction), 2),)))
+    assert dict(after.effect_values_for_planning)[resource] == 3
+
+
+def test_matching_gain_after_modifier_does_not_certify_same_card_review_conversion():
+    setup = simulate_play(_all_known_resource_state(), _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamReviewAdditive, 500),)))
+    follow = _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamReview, 3),
+        _output(ProduceExamEffectType.ExamLessonDependExamReview, 1000)))
+    result = EffectHeuristicEvaluator().evaluate(follow, setup)
+    assert result.projected_output > 0
+    assert result.confirmed_output == 0
