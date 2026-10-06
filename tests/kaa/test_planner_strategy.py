@@ -1143,3 +1143,52 @@ def test_hold_ranking_keeps_growth_uncertain_instead_of_erasing_it(monkeypatch):
     assert future is not None and future.projected_card_growth == (('growth', False),)
     assert future.anomaly.full_power_points == 7
     assert can_afford_play(future, _planner_hand('fee').card) is None
+
+
+@pytest.mark.parametrize('initial_genki,cost,gain,known,phase,missing,gate_id,expected', [
+    (10, 5, 0, True, 'ProduceExamPhaseType_None', False, 'gate', 10),
+    (3, 0, 5, True, 'ProduceExamPhaseType_None', False, 'gate', 28),
+    (10, 0, 0, False, 'ProduceExamPhaseType_None', False, 'gate', 10),
+    (10, 0, 0, True, 'ProduceExamPhaseType_None', True, 'gate', 10),
+    (10, 0, 0, True, 'ProduceExamPhaseType_ExamStartTurn', False, 'gate', 10),
+    (10, 0, 0, True, 'ProduceExamPhaseType_ExamCardPlay', False, 'gate', 28),
+    (10, 0, 0, True, 'ProduceExamPhaseType_None', False, '', 28),
+])
+def test_followup_requires_usage_condition_in_projected_state(
+    monkeypatch, initial_genki, cost, gain, known, phase, missing, gate_id, expected,
+):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    condition = trigger.ExamTrigger(phase_types=(phase,),
+        field_status_types=('ProduceExamFieldStatusType_BlockUp',), field_status_values=(7,))
+    monkeypatch.setattr(trigger, 'load_exam_trigger', lambda key: (
+        condition if key and not missing else None))
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, gain), stamina=cost)
+    finish = _planner_hand('finish')
+    finish.card._play_produce_exam_trigger_id = gate_id
+    state = BattleState(remaining_turns=3, hp=20, genki=initial_genki,
+        genki_known=known, playable_count=2)
+    strategy = PlannerStrategy(FakeEvaluator({'setup': 10, 'finish': 20}))
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in (setup, finish)]
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[0][1].score == expected
+    assert state.genki == initial_genki
+
+
+def test_followup_usage_condition_rechecks_special_resource_after_payment(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    condition = trigger.ExamTrigger(field_status_types=('ProduceExamFieldStatusType_ReviewUp',),
+        field_status_values=(3,))
+    monkeypatch.setattr(trigger, 'load_exam_trigger', lambda key: condition if key else None)
+    setup = _planner_hand('setup')
+    setup.card.cost_type = 'ExamCostType_ExamReview'
+    setup.card.cost_value = 4
+    finish = _planner_hand('finish')
+    finish.card._play_produce_exam_trigger_id = 'gate'
+    state = BattleState(remaining_turns=3, hp=20, genki=0, playable_count=2,
+        buffs=ExamBuffState(review=5), observed_effect_values=(('review', 5),))
+    strategy = PlannerStrategy(FakeEvaluator({'setup': 10, 'finish': 20}))
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in (setup, finish)]
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[0][1].score == 10
+    assert state.buffs.review == 5

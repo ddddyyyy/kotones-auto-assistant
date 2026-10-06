@@ -26,6 +26,7 @@ from .play_evidence import PlayFeedbackEvidence
 from .profiles import profile_for
 from .simulator import can_afford_play, play_cost, simulate_play
 from .state import BattleState
+from .trigger import TriggerVerdict, evaluate_trigger_id
 from .visible_output import supports_current_preview
 
 if TYPE_CHECKING:
@@ -551,6 +552,13 @@ class PlannerStrategy(AbstractBattleStrategy):
                 for second_card, _ in candidates
                 if second_card is not first_card and second_card.card is not None
                 and can_afford_play(future, second_card.card) is True
+                # Payment alone cannot establish the card's usage condition.
+                # Recheck after the first play, using trusted projected balances;
+                # missing metadata or an unobserved event phase stays unknown.
+                and evaluate_trigger_id(
+                    getattr(second_card.card, '_play_produce_exam_trigger_id', '') or '',
+                    future,
+                ) == TriggerVerdict.ACTIVE
                 for evaluation in [self._evaluator.evaluate(second_card.card, future)]
                 if evaluation is not None
             ]
