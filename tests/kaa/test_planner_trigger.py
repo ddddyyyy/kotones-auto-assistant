@@ -348,3 +348,76 @@ def test_cumulative_point_trigger_needs_complete_history_even_with_current_hud(t
         observed_effect_values=(('full_power_point', 50),))
     trigger = _trigger('ProduceExamFieldStatusType_FullPowerPointGetSumUp', 10, negated=negated)
     assert evaluate_exam_trigger(trigger, state) == TriggerVerdict.UNKNOWN
+
+
+_JSON_CONDITION_COLUMNS = [
+    'phaseTypes', 'fieldStatusCheckTypes', 'fieldStatusTypes',
+    'fieldStatusValues', 'phaseValues', 'fieldStatusProduceCardSearchIds', 'effectTypes',
+]
+
+
+def _plain_condition_row():
+    row: dict[str, str | int] = {key: '[]' for key in _JSON_CONDITION_COLUMNS}
+    row.update(produceCardSearchId='', upperSearchCount=0, lowerSearchCount=0,
+        cardMovePositionType='ProduceCardMovePositionType_Unknown',
+        lessonType='ProduceStepLessonType_Unknown')
+    return row
+
+
+@pytest.mark.parametrize('column', _JSON_CONDITION_COLUMNS)
+@pytest.mark.parametrize('raw', ['invalid-json', '{}', 'null', '1', 'true', '"[]"', '[{}]'])
+def test_invalid_named_condition_arrays_are_unknown_without_throwing(monkeypatch, column, raw):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    row = _plain_condition_row()
+    row[column] = raw
+    monkeypatch.setattr(trigger, 'select', lambda *_: row)
+    trigger.load_exam_trigger.cache_clear()
+    try:
+        state = BattleState(remaining_turns=3, hp=20, genki=20)
+        assert trigger.evaluate_trigger_id('damaged', state) == TriggerVerdict.UNKNOWN
+        assert trigger.evaluate_trigger_id('', state) == TriggerVerdict.ACTIVE
+    finally:
+        trigger.load_exam_trigger.cache_clear()
+
+
+@pytest.mark.parametrize('column', _JSON_CONDITION_COLUMNS)
+def test_named_condition_array_element_types_are_validated(monkeypatch, column):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    row = _plain_condition_row()
+    row[column] = '["1"]' if column in {'fieldStatusValues', 'phaseValues'} else '[1]'
+    monkeypatch.setattr(trigger, 'select', lambda *_: row)
+    trigger.load_exam_trigger.cache_clear()
+    try:
+        assert trigger.evaluate_trigger_id('wrong-type', BattleState(remaining_turns=3, hp=20, genki=20)) == TriggerVerdict.UNKNOWN
+    finally:
+        trigger.load_exam_trigger.cache_clear()
+
+
+@pytest.mark.parametrize('column', ['fieldStatusValues', 'phaseValues'])
+def test_boolean_condition_value_is_not_an_integer_threshold(monkeypatch, column):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    row = _plain_condition_row()
+    row[column] = '[true]'
+    monkeypatch.setattr(trigger, 'select', lambda *_: row)
+    trigger.load_exam_trigger.cache_clear()
+    try:
+        assert trigger.evaluate_trigger_id('boolean', BattleState(remaining_turns=3, hp=20, genki=20)) == TriggerVerdict.UNKNOWN
+    finally:
+        trigger.load_exam_trigger.cache_clear()
+
+
+def test_repaired_condition_is_reloaded_after_database_cache_clear(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import trigger
+    from kaa.db import _util
+    row = _plain_condition_row()
+    row['fieldStatusTypes'] = '{}'
+    monkeypatch.setattr(trigger, 'select', lambda *_: row)
+    trigger.load_exam_trigger.cache_clear()
+    try:
+        state = BattleState(remaining_turns=3, hp=20, genki=20)
+        assert trigger.evaluate_trigger_id('repair', state) == TriggerVerdict.UNKNOWN
+        row['fieldStatusTypes'] = '[]'
+        _util.clear_db_caches()
+        assert trigger.evaluate_trigger_id('repair', state) == TriggerVerdict.ACTIVE
+    finally:
+        trigger.load_exam_trigger.cache_clear()

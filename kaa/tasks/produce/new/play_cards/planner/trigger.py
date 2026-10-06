@@ -29,11 +29,13 @@ class ExamTrigger:
     """Extra DB constraints require event/card/lesson context we do not have."""
 
 
-def _json_tuple(raw: str | None) -> tuple:
+def _json_tuple(raw: str | None, item_type: type = str) -> tuple:
     if not raw:
         return ()
     value = json.loads(raw)
-    return tuple(value) if isinstance(value, list) else ()
+    if not isinstance(value, list) or any(type(item) is not item_type for item in value):
+        raise ValueError('Trigger constraints must be arrays with correctly typed elements')
+    return tuple(value)
 
 
 @lru_cache(maxsize=1024)
@@ -49,19 +51,32 @@ def load_exam_trigger(trigger_id: str) -> ExamTrigger | None:
     )
     if row is None:
         return None
+    try:
+        phase_types = _json_tuple(row['phaseTypes'])
+        check_types = _json_tuple(row['fieldStatusCheckTypes'])
+        status_types = _json_tuple(row['fieldStatusTypes'])
+        status_values = _json_tuple(row['fieldStatusValues'], int)
+        phase_values = _json_tuple(row['phaseValues'], int)
+        search_ids = _json_tuple(row['fieldStatusProduceCardSearchIds'])
+        effect_types = _json_tuple(row['effectTypes'])
+    except (ValueError, TypeError):
+        # A named but malformed condition provides no evidence that it fires.
+        # Parse every array before combining constraints, including those that
+        # would otherwise be skipped by boolean short-circuit evaluation.
+        return None
     return ExamTrigger(
-        phase_types=_json_tuple(row['phaseTypes']),
-        field_status_check_types=_json_tuple(row['fieldStatusCheckTypes']),
-        field_status_types=_json_tuple(row['fieldStatusTypes']),
-        field_status_values=_json_tuple(row['fieldStatusValues']),
+        phase_types=phase_types,
+        field_status_check_types=check_types,
+        field_status_types=status_types,
+        field_status_values=status_values,
         unmodeled_constraints=bool(
-            _json_tuple(row['phaseValues'])
-            or any(_json_tuple(row['fieldStatusProduceCardSearchIds']))
+            phase_values
+            or any(search_ids)
             or row['produceCardSearchId']
             or row['upperSearchCount']
             or row['lowerSearchCount']
             or row['cardMovePositionType'] not in {None, '', 'ProduceCardMovePositionType_Unknown'}
-            or _json_tuple(row['effectTypes'])
+            or effect_types
             or row['lessonType'] not in {None, '', 'ProduceStepLessonType_Unknown'}
         ),
     )
