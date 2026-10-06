@@ -499,3 +499,126 @@ def test_refreshed_snapshot_does_not_retain_old_growth_marker():
     assert can_afford_play(state, _card()) is None
     refreshed = replace(state, unresolved_growth_card_ids=frozenset())
     assert can_afford_play(refreshed, _card()) is True
+
+
+_RESOURCE_GROWTH_CASES = [
+    ('ExamLessonBuff', 'lesson_buff', 'ExamCostType_ExamLessonBuff'),
+    ('ExamLessonBuffReduce', 'lesson_buff', 'ExamCostType_ExamLessonBuff'),
+    ('ExamReview', 'review', 'ExamCostType_ExamReview'),
+    ('ExamReviewReduce', 'review', 'ExamCostType_ExamReview'),
+    ('ExamCardPlayAggressive', 'aggressive', 'ExamCostType_ExamCardPlayAggressive'),
+    ('ExamAggressiveReduce', 'aggressive', 'ExamCostType_ExamCardPlayAggressive'),
+    ('ExamParameterBuff', 'parameter_buff', 'ExamCostType_ExamParameterBuff'),
+    ('ExamParameterBuffMultiplePerTurn', 'parameter_buff_multiple', 'ExamCostType_ExamParameterBuffMultiplePerTurn'),
+    ('ExamFullPowerPoint', 'full_power_point', 'ExamCostType_ExamFullPowerPoint'),
+    ('ExamFullPowerPointReduce', 'full_power_point', 'ExamCostType_ExamFullPowerPoint'),
+]
+
+
+@pytest.mark.parametrize('kind,resource,cost_type', _RESOURCE_GROWTH_CASES)
+@pytest.mark.parametrize('source', ['intrinsic', 'projected'])
+def test_uncertain_output_growth_cannot_prove_special_balance(monkeypatch, kind, resource, cost_type, source):
+    from kaa.db import card_status_enchant as db
+    from kaa.tasks.produce.new.play_cards.planner.state import AnomalyState, ExamBuffState
+    initial = replace(_state(hp=100, growth=()), anomaly=AnomalyState(full_power_points=5),
+        buffs=ExamBuffState(lesson_buff=5, review=5, aggressive=5,
+            parameter_buff_turns=5, parameter_buff_multiple_turns=5),
+        projected_effect_values=((resource, 5),), observed_effect_values=((resource, 5),))
+    growing = _card(green=0, effects=(_output(getattr(ProduceExamEffectType, kind), 2),))
+    if source == 'intrinsic':
+        growing._produce_card_status_enchant_id = 'unobserved'
+        monkeypatch.setattr(db, 'get_card_status_enchant', lambda _: SimpleNamespace(
+            cost_changed=False, output_changed=True))
+    else:
+        monkeypatch.setattr(costs, 'get_card_growth_rule', lambda _: _rule(
+            output_changed=True, output_known=False))
+        initial = replace(initial, projected_card_growth=(('growth', True),))
+    after = simulate_play(initial, growing)
+    follow = _card(green=0); follow.cost_type = cost_type; follow.cost_value = 1
+    assert dict(after.effect_values_for_planning)[resource] is None
+    assert can_afford_play(after, follow) is None
+    assert after.observed_effect_values == initial.observed_effect_values
+    assert growing.play_effects[0].produce_exam_effect.effect_value1 == 2
+
+
+@pytest.mark.parametrize('uncertain', [False, True])
+def test_hp_recovery_growth_preserves_estimate_but_only_known_value_proves_payment(monkeypatch, uncertain):
+    from kaa.db import card_status_enchant as db
+    monkeypatch.setattr(db, 'get_card_status_enchant', lambda _: SimpleNamespace(
+        cost_changed=False, output_changed=uncertain))
+    recovery = _card(green=0, effects=(_output(ProduceExamEffectType.ExamStaminaRecoverFix, 5),))
+    recovery._produce_card_status_enchant_id = 'enchant'
+    initial = _state(hp=1, growth=())
+    after = simulate_play(initial, recovery)
+    assert after.hp == 6 and after.hp_known is (not uncertain)
+    assert after.genki_known
+    assert can_afford_play(after, _card(green=0, red=4)) is (None if uncertain else True)
+    assert initial.hp == 1 and initial.hp_known
+
+
+@pytest.mark.parametrize('verdict', [TriggerVerdict.UNKNOWN, TriggerVerdict.INACTIVE])
+def test_unconfirmed_recovery_trigger_does_not_prove_unchanged_hp(monkeypatch, verdict):
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    recovery = _card(green=0, effects=(_output(ProduceExamEffectType.ExamStaminaRecoverFix, 5),))
+    after = simulate_play(_state(hp=0, growth=()), recovery)
+    assert after.hp == 0
+    assert after.hp_known is (verdict == TriggerVerdict.INACTIVE)
+    assert can_afford_play(after, _card(green=0, red=4)) is (False if verdict == TriggerVerdict.INACTIVE else None)
+
+
+def test_cost_only_growth_preserves_hp_recovery_and_special_balance(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda _: _rule(output_changed=False))
+    initial = replace(_state(hp=1), buffs=ExamBuffState(lesson_buff=5),
+        projected_effect_values=(('lesson_buff', 5),))
+    recovering = _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamLessonBuff, 2),
+        _output(ProduceExamEffectType.ExamStaminaRecoverFix, 5)))
+    after = simulate_play(initial, recovering)
+    assert after.hp == 6 and after.hp_known
+    assert dict(after.effect_values_for_planning)['lesson_buff'] == 7
+
+
+@pytest.mark.parametrize('kind,resource,cost_type', [
+    row for row in _RESOURCE_GROWTH_CASES if row[0] not in {'ExamReview', 'ExamFullPowerPoint'}
+])
+def test_decoded_review_growth_does_not_change_other_resource_segments(monkeypatch, kind, resource, cost_type):
+    from kaa.tasks.produce.new.play_cards.planner.state import AnomalyState, ExamBuffState
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda _: _rule(
+        output_changed=True, output_known=True, review_changes=(3,)))
+    initial = replace(_state(hp=100), anomaly=AnomalyState(full_power_points=5),
+        buffs=ExamBuffState(lesson_buff=5, review=5, aggressive=5,
+            parameter_buff_turns=5, parameter_buff_multiple_turns=5),
+        projected_effect_values=((resource, 5),))
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 2),)))
+    assert dict(after.effect_values_for_planning)[resource] is not None
+    follow = _card(green=0); follow.cost_type = cost_type; follow.cost_value = 1
+    assert can_afford_play(after, follow) is True
+
+
+def test_decoded_resource_growth_does_not_change_fixed_hp_recovery(monkeypatch):
+    monkeypatch.setattr(costs, 'get_card_growth_rule', lambda _: _rule(
+        output_changed=True, output_known=True, review_changes=(3,)))
+    after = simulate_play(_state(hp=1), _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamStaminaRecoverFix, 5),)))
+    assert after.hp == 6 and after.hp_known
+
+
+@pytest.mark.parametrize('uncertain', [False, True])
+def test_next_card_does_not_confirm_output_from_unobserved_growth_balance(monkeypatch, uncertain):
+    from kaa.db import card_status_enchant as db
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    monkeypatch.setattr(db, 'get_card_status_enchant', lambda _: SimpleNamespace(
+        cost_changed=False, output_changed=uncertain))
+    setup = _card(green=0, effects=(_output(ProduceExamEffectType.ExamLessonBuff, 2),))
+    setup._produce_card_status_enchant_id = 'enchant'
+    initial = replace(_state(hp=100, growth=()), buffs=ExamBuffState(),
+        projected_effect_values=(('lesson_buff', 0),))
+    after = simulate_play(initial, setup)
+    segment = _output(ProduceExamEffectType.ExamMultipleLessonBuffLesson, 10)
+    segment.produce_exam_effect.effect_value2 = 1000
+    follow = _card(green=0, effects=(segment,))
+    evaluation = EffectHeuristicEvaluator().evaluate(follow, after)
+    assert evaluation.projected_output == 12
+    assert evaluation.confirmed_output == (0 if uncertain else 12)

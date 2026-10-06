@@ -83,6 +83,20 @@ def projected_growth_output(
         } and not (rule.lesson_changes or rule.lesson_count_changes):
             # Resource growth changes the simulated balance, not this coefficient.
             pass
+        elif kind in {
+            ProduceExamEffectType.ExamLessonBuff,
+            ProduceExamEffectType.ExamLessonBuffReduce,
+            ProduceExamEffectType.ExamReviewReduce,
+            ProduceExamEffectType.ExamCardPlayAggressive,
+            ProduceExamEffectType.ExamAggressiveReduce,
+            ProduceExamEffectType.ExamParameterBuff,
+            ProduceExamEffectType.ExamParameterBuffMultiplePerTurn,
+            ProduceExamEffectType.ExamFullPowerPointReduce,
+            ProduceExamEffectType.ExamStaminaRecoverFix,
+        }:
+            # Fully decoded growth only changes the supported fields above;
+            # it cannot change these other resource segments or recovery.
+            pass
         else:
             known = False
     return value, count, known

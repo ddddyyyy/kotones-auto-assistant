@@ -18,6 +18,20 @@ from .state import BattleState
 from .trigger import TriggerVerdict, evaluate_trigger_id
 
 
+_RESOURCE_EFFECTS = {
+    ProduceExamEffectType.ExamLessonBuff: 'lesson_buff',
+    ProduceExamEffectType.ExamLessonBuffReduce: 'lesson_buff',
+    ProduceExamEffectType.ExamReview: 'review',
+    ProduceExamEffectType.ExamReviewReduce: 'review',
+    ProduceExamEffectType.ExamCardPlayAggressive: 'aggressive',
+    ProduceExamEffectType.ExamAggressiveReduce: 'aggressive',
+    ProduceExamEffectType.ExamParameterBuff: 'parameter_buff',
+    ProduceExamEffectType.ExamParameterBuffMultiplePerTurn: 'parameter_buff_multiple',
+    ProduceExamEffectType.ExamFullPowerPoint: 'full_power_point',
+    ProduceExamEffectType.ExamFullPowerPointReduce: 'full_power_point',
+}
+
+
 def can_afford_play(state: BattleState, card: SkillCard) -> bool | None:
     """Prove affordability from the available HUD values, or return unknown."""
     special = special_cost_affordability(state, card)
@@ -48,14 +62,10 @@ def _growth_adjusted_resource_card(state: BattleState, card: SkillCard) -> tuple
     adjusted.play_effects = []
     growth = list(state.projected_card_growth)
     uncertain: set[str] = set()
-    resources = {
-        ProduceExamEffectType.ExamReview: 'review',
-        ProduceExamEffectType.ExamFullPowerPoint: 'full_power_point',
-    }
     for play_effect in getattr(card, 'play_effects', ()):
         effect = play_effect.produce_exam_effect
         if (
-            effect is not None and effect.effect_type in resources
+            effect is not None and effect.effect_type in _RESOURCE_EFFECTS
             and evaluate_trigger_id(getattr(play_effect, '_produce_exam_trigger_id', ''), state)
             != TriggerVerdict.INACTIVE
         ):
@@ -65,7 +75,7 @@ def _growth_adjusted_resource_card(state: BattleState, card: SkillCard) -> tuple
                 applied_count=len(state.projected_card_growth),
             )
             if not known:
-                uncertain.add(resources[effect.effect_type])
+                uncertain.add(_RESOURCE_EFFECTS[effect.effect_type])
             segment = copy(play_effect)
             segment.produce_exam_effect = copy(effect)
             segment.produce_exam_effect.effect_value1 = int(value)
@@ -129,18 +139,6 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         # Unknown growth may change a special fee or replace its type. Paying
         # the DB base amount does not establish the next card's resource budget.
         uncertain_balances.update(SPECIAL_COST_EFFECTS.values())
-    resource_effects = {
-        ProduceExamEffectType.ExamLessonBuff: 'lesson_buff',
-        ProduceExamEffectType.ExamLessonBuffReduce: 'lesson_buff',
-        ProduceExamEffectType.ExamReview: 'review',
-        ProduceExamEffectType.ExamReviewReduce: 'review',
-        ProduceExamEffectType.ExamCardPlayAggressive: 'aggressive',
-        ProduceExamEffectType.ExamAggressiveReduce: 'aggressive',
-        ProduceExamEffectType.ExamParameterBuff: 'parameter_buff',
-        ProduceExamEffectType.ExamParameterBuffMultiplePerTurn: 'parameter_buff_multiple',
-        ProduceExamEffectType.ExamFullPowerPoint: 'full_power_point',
-        ProduceExamEffectType.ExamFullPowerPointReduce: 'full_power_point',
-    }
     for play_effect in getattr(card, 'play_effects', ()):
         effect = play_effect.produce_exam_effect
         if effect is None or effect.effect_type is None:
@@ -150,10 +148,10 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         )
         if verdict != TriggerVerdict.INACTIVE and effect.effect_type == ProduceExamEffectType.ExamAddGrowEffect:
             growth.append((getattr(effect, '_id', ''), verdict == TriggerVerdict.ACTIVE))
-        if verdict == TriggerVerdict.UNKNOWN and effect.effect_type in resource_effects:
+        if verdict == TriggerVerdict.UNKNOWN and effect.effect_type in _RESOURCE_EFFECTS:
             # Skipping an uncertain effect does not prove that the old balance
             # survives. It may change before the second card pays.
-            uncertain_balances.add(resource_effects[effect.effect_type])
+            uncertain_balances.add(_RESOURCE_EFFECTS[effect.effect_type])
         if effect.effect_type in modifier_effects and verdict == TriggerVerdict.UNKNOWN:
             modifier = 'unknown'
         if verdict != TriggerVerdict.INACTIVE and effect.effect_type in restriction_effects:
@@ -162,6 +160,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
         }:
             genki_known = False
+        if verdict == TriggerVerdict.UNKNOWN and effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
+            hp_known = False
         if verdict != TriggerVerdict.ACTIVE:
             continue
         if effect.effect_type in modifier_effects:
@@ -187,8 +187,13 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             if block_value and 'genki_gain' in restrictions:
                 genki_known = False
         elif effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
-            hp += value
-            if value and 'hp_recovery' in restrictions:
+            recovery, _count, growth_known = projected_growth_output(
+                replace(state, projected_card_growth=tuple(growth)), card,
+                effect.effect_type, value, 1, applied_count=len(state.projected_card_growth),
+            )
+            hp += int(recovery)
+            hp_known &= growth_known
+            if recovery and 'hp_recovery' in restrictions:
                 hp_known = False
 
     projected_values = dict(state.effect_values_for_planning)
