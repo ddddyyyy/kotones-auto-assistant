@@ -32,6 +32,21 @@ _RESOURCE_EFFECTS = {
 }
 
 
+_UNMODELED_GENKI_EFFECTS = {
+    ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+    ProduceExamEffectType.ExamBlockPerUseCardCount,
+    ProduceExamEffectType.ExamBlockDependExamReview,
+    ProduceExamEffectType.ExamBlockDependBlockConsumptionSum,
+    ProduceExamEffectType.ExamBlockDown,
+}
+_UNMODELED_HP_EFFECTS = {
+    ProduceExamEffectType.ExamStaminaRecoverMultiple,
+    ProduceExamEffectType.ExamStaminaReduce,
+    ProduceExamEffectType.ExamStaminaReduceFix,
+    ProduceExamEffectType.ExamStaminaDamage,
+}
+
+
 def can_afford_play(state: BattleState, card: SkillCard) -> bool | None:
     """Prove affordability from the available HUD values, or return unknown."""
     special = special_cost_affordability(state, card)
@@ -162,6 +177,14 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             genki_known = False
         if verdict == TriggerVerdict.UNKNOWN and effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
             hp_known = False
+        if verdict != TriggerVerdict.INACTIVE:
+            # These direct resource changes need unobserved maxima, counters
+            # or uncalibrated rules. Skipping their amount is only an estimate;
+            # it cannot certify the old balance for payment or conversion.
+            if effect.effect_type in _UNMODELED_GENKI_EFFECTS:
+                genki_known = False
+            if effect.effect_type in _UNMODELED_HP_EFFECTS:
+                hp_known = False
         if verdict != TriggerVerdict.ACTIVE:
             continue
         if effect.effect_type in modifier_effects:

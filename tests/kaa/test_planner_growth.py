@@ -622,3 +622,58 @@ def test_next_card_does_not_confirm_output_from_unobserved_growth_balance(monkey
     evaluation = EffectHeuristicEvaluator().evaluate(follow, after)
     assert evaluation.projected_output == 12
     assert evaluation.confirmed_output == (0 if uncertain else 12)
+
+
+_UNMODELED_BALANCE_EFFECTS = [
+    ('ExamBlockAddMultipleAggressive', 'genki'),
+    ('ExamBlockPerUseCardCount', 'genki'),
+    ('ExamBlockDependExamReview', 'genki'),
+    ('ExamBlockDependBlockConsumptionSum', 'genki'),
+    ('ExamBlockDown', 'genki'),
+    ('ExamStaminaRecoverMultiple', 'hp'),
+    ('ExamStaminaReduce', 'hp'),
+    ('ExamStaminaReduceFix', 'hp'),
+    ('ExamStaminaDamage', 'hp'),
+]
+
+
+@pytest.mark.parametrize('kind,resource', _UNMODELED_BALANCE_EFFECTS)
+@pytest.mark.parametrize('verdict', list(TriggerVerdict))
+def test_unmodeled_resource_effect_never_certifies_old_budget(monkeypatch, kind, resource, verdict):
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    initial = replace(_state(hp=20, growth=()), genki=20)
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 5),)))
+    assert after.hp == 20 and after.genki == 20
+    assert getattr(after, resource + '_known') == (verdict == TriggerVerdict.INACTIVE)
+    other = 'hp' if resource == 'genki' else 'genki'
+    assert getattr(after, other + '_known')
+    follow = _card(green=41) if resource == 'genki' else _card(green=0, red=1)
+    assert can_afford_play(after, follow) == (
+        (False if resource == 'genki' else True)
+        if verdict == TriggerVerdict.INACTIVE else None
+    )
+    assert initial.hp_known and initial.genki_known
+
+
+@pytest.mark.parametrize('kind,resource,gain', [
+    ('ExamStaminaReduce', 'hp', 'ExamStaminaRecoverFix'),
+    ('ExamBlockDown', 'genki', 'ExamBlockFix'),
+])
+def test_known_gain_after_unmodeled_balance_change_does_not_restore_certainty(kind, resource, gain):
+    after = simulate_play(replace(_state(hp=20, growth=()), genki=20),
+        _card(green=0, effects=(
+            _output(getattr(ProduceExamEffectType, kind), 5),
+            _output(getattr(ProduceExamEffectType, gain), 3))))
+    assert getattr(after, resource) == 23
+    assert not getattr(after, resource + '_known')
+
+
+def test_unmodeled_genki_change_does_not_confirm_in_card_conversion():
+    initial = replace(_state(hp=20, growth=()), genki=20)
+    card = _card(green=0, effects=(
+        _output(ProduceExamEffectType.ExamBlockAddMultipleAggressive, 5),
+        _output(ProduceExamEffectType.ExamLessonDependBlock, 1000)))
+    evaluation = EffectHeuristicEvaluator().evaluate(card, initial)
+    assert evaluation.projected_output == 20
+    assert evaluation.confirmed_output == 0
