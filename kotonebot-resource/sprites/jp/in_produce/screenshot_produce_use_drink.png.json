@@ -17,6 +17,46 @@
       },
       "prefab_id": "TemplateMatchPrefab",
       "variant_policy": {}
+    },
+    "5dd4d05f-25b5-4619-bdec-0ec881afc034": {
+      "name": "InProduce.DrinkUse.Title",
+      "type": "prefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 58,
+          "y1": 840,
+          "x2": 274,
+          "y2": 878
+        }
+      },
+      "prefab_id": "TemplateMatchPrefab"
+    },
+    "271efdb1-a5cf-49ce-ac7c-d646a703129d": {
+      "name": "InProduce.DrinkUse.BoxTitle",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 27,
+          "y1": 790,
+          "x2": 693,
+          "y2": 920
+        }
+      }
+    },
+    "ebf6639c-56c8-4db1-a9bc-ab94fb8de52f": {
+      "name": "InProduce.DrinkUse.BoxUse",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 366,
+          "y1": 1095,
+          "x2": 638,
+          "y2": 1220
+        }
+      }
     }
   }
 }

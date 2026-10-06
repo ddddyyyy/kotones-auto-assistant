@@ -5,7 +5,7 @@ import cv2
 from cv2.typing import MatLike
 
 from kaa.db.drink import Drink
-from kaa.game_ui.drinks_overview import locate_all_drinks_in_3_drink_slots
+from kaa.game_ui.drinks_overview import find_drink_use_button, locate_all_drinks_in_3_drink_slots
 from kaa.tasks import R
 from kaa.tasks.common import skip
 from kaa.config import conf
@@ -371,7 +371,9 @@ def do_cards(
                 sleep(4)  # 等待卡片刷新
                 continue
         # 饮品详细对话框（需要在 ButtonIconCheckMark 之前，因为ButtonUse也是√）
-        if R.InProduce.ButtonUse.try_click():
+        drink_use_button = find_drink_use_button(img)
+        if drink_use_button is not None:
+            device.click(drink_use_button)
             if enable_drink and drinks_list is not None:
                 if drink_selected_idx < 0 or drink_selected_idx >= len(drinks_list):
                     logger.warning('`drink_selected_idx` dismatches, internal error!')

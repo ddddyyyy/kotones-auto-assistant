@@ -6,7 +6,8 @@ import cv2
 import numpy as np
 from kotonebot import action
 from cv2.typing import MatLike
-from kotonebot.primitives import RectTuple
+from kotonebot.primitives import Rect, RectTuple
+from kotonebot.backend.image import find as find_template
 
 from kaa.tasks import R
 from kaa.db.drink import Drink
@@ -144,6 +145,21 @@ def match_first_drinks(img: MatLike, delta_threshold: float = 0.7) -> Drink | No
         str(round(matches[1].distance - matches[0].distance, 2))
     )
     return drink
+
+
+def find_drink_use_button(img: MatLike) -> Rect | None:
+    """同帧确认饮料详情标题与使用按钮，兼容弹窗高度的小幅变化。"""
+    title = find_template(
+        img, R.InProduce.DrinkUse.Title.template,
+        rect=R.InProduce.DrinkUse.BoxTitle,
+    )
+    if title is None:
+        return None
+    button = find_template(
+        img, R.InProduce.ButtonUse.template,
+        rect=R.InProduce.DrinkUse.BoxUse,
+    )
+    return button.rect if button is not None else None
 
 
 def _drink_slot_rects(img: MatLike) -> list[RectTuple]:
