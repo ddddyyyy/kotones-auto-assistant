@@ -199,7 +199,13 @@ class PlannerStrategy(AbstractBattleStrategy):
                 observed_hands, state, evaluated_candidates,
                 traced_candidates, candidates, 'selected',
             )
-            self._decision_trace.decision(state, traced_candidates, best)
+            self._decision_trace.decision(
+                state, traced_candidates, best, selected_hand=best_card,
+                selected_slot=next(
+                    (slot for slot, hand in enumerate(observed_hands) if hand is best_card),
+                    None,
+                ),
+            )
         logger.info(
             'Planner selected %s: score=%.1f confidence=%s reason=%s',
             best_card.card.name if best_card.card else best.card_id,

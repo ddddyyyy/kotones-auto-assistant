@@ -179,14 +179,24 @@ class DecisionTrace:
         self, state: 'BattleState',
         candidates: list[tuple['CardGameObject', 'CardEvaluation']],
         selected: 'CardEvaluation',
+        *, selected_hand: 'CardGameObject | None' = None,
+        selected_slot: int | None = None,
     ) -> None:
         self.pending = None
         if self.count >= 256:
             return
         self.count += 1
         try:
+            # Identity, not card ID or equal scores, distinguishes visible copies.
+            selected_indices = [
+                index for index, (hand, evaluation) in enumerate(candidates)
+                if (hand is selected_hand if selected_hand is not None else evaluation is selected)
+            ]
+            selected_index = selected_indices[0] if len(selected_indices) == 1 else None
             self._append({
                 'schema_version': 1, 'event': 'decision', 'sequence': self.count,
+                'selected_candidate_index': selected_index,
+                'selected_slot': selected_slot if selected_index is not None else None,
                 'state': asdict(state), 'selected': asdict(selected),
                 'candidates': [
                     {

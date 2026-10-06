@@ -316,3 +316,40 @@ def test_title_identity_trace_keeps_ocr_confidence_separate_from_image_distance(
     assert event['hands'][0]['recognition'] == {
         'asset': 'canonical.png', 'database_match_distance': None,
         'ocr_confidence': 0.995, 'title': '輝け!', 'method': 'title'}
+
+
+def test_selected_instance_distinguishes_identical_evaluations_and_filtered_slots(tmp_path):
+    trace = DecisionTrace(tmp_path)
+    evaluation = CardEvaluation('duplicate', 1, EvaluationConfidence.LOW, 'same')
+    card = SimpleNamespace(stamina=1, force_stamina=0, play_effects=[])
+    first, second = SimpleNamespace(card=card), SimpleNamespace(card=card)
+    trace.decision(BattleState(remaining_turns=2, hp=7, genki=8),
+                   [(first, evaluation), (second, evaluation)], evaluation,
+                   selected_hand=second, selected_slot=4)
+    event = json.loads(trace.path.read_text(encoding='utf-8'))
+    assert event['selected_candidate_index'] == 1
+    assert event['selected_slot'] == 4
+
+
+def test_selected_instance_does_not_guess_from_shared_evaluation(tmp_path):
+    trace = DecisionTrace(tmp_path)
+    evaluation = CardEvaluation('duplicate', 1, EvaluationConfidence.LOW, 'same')
+    card = SimpleNamespace(stamina=1, force_stamina=0, play_effects=[])
+    trace.decision(BattleState(remaining_turns=2, hp=7, genki=8),
+                   [(SimpleNamespace(card=card), evaluation),
+                    (SimpleNamespace(card=card), evaluation)], evaluation)
+    event = json.loads(trace.path.read_text(encoding='utf-8'))
+    assert event['selected_candidate_index'] is None
+    assert event['selected_slot'] is None
+
+
+def test_selected_instance_missing_from_candidates_keeps_identity_unknown(tmp_path):
+    trace = DecisionTrace(tmp_path)
+    evaluation = CardEvaluation('duplicate', 1, EvaluationConfidence.LOW, 'same')
+    card = SimpleNamespace(stamina=1, force_stamina=0, play_effects=[])
+    trace.decision(BattleState(remaining_turns=2, hp=7, genki=8),
+                   [(SimpleNamespace(card=card), evaluation)], evaluation,
+                   selected_hand=SimpleNamespace(card=card), selected_slot=4)
+    event = json.loads(trace.path.read_text(encoding='utf-8'))
+    assert event['selected_candidate_index'] is None
+    assert event['selected_slot'] is None
