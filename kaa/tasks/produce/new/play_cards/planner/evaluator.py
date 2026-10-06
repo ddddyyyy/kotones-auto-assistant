@@ -639,8 +639,31 @@ class EffectHeuristicEvaluator:
         )
 
     @staticmethod
+    def _pride_active(state: BattleState) -> bool | None:
+        if state.projected_effect_values is None:
+            # The badge shows duration, not the multiplier amount.
+            return 'pride' in state.observed_effects
+        value = dict(state.projected_effect_values).get('pride', 0)
+        return None if value is None else value == 1
+
+    @staticmethod
     def _output_multiplier_known(state: BattleState) -> bool:
         """Do not certify output from stale or invalidated search multipliers."""
+        pride = EffectHeuristicEvaluator._pride_active(state)
+        if pride is None:
+            return False
+        if pride:
+            values = dict(state.effect_values_for_planning)
+            if any(values.get(name) != modeled for name, modeled in (
+                ('aggressive', state.buffs.aggressive), ('review', state.buffs.review),
+            )):
+                return False
+            # Combined multipliers/stances still need independent calibration.
+            if (state.buffs.parameter_buff_turns > 0
+                or state.buffs.parameter_buff_multiple_turns > 0
+                or state.anomaly.full_power_active
+                or state.anomaly.stance.value != 'normal'):
+                return False
         if state.projected_effect_values is None:
             return True
         values = dict(state.projected_effect_values)
@@ -661,6 +684,12 @@ class EffectHeuristicEvaluator:
             if state.is_exam and state.exam_score_percent is not None
             and state.exam_score_percent >= 0 else 1.0
         )
+        if EffectHeuristicEvaluator._pride_active(state):
+            # Master-data description: 2% per smaller review/aggressive point,
+            # capped at 50%. Keep fractions; global rounding order is unverified.
+            multiplier *= 1.0 + min(0.5, 0.02 * max(
+                0, min(state.buffs.review, state.buffs.aggressive),
+            ))
         if state.buffs.parameter_buff_turns > 0:
             multiplier *= 1.5
         if state.buffs.parameter_buff_multiple_turns > 0:

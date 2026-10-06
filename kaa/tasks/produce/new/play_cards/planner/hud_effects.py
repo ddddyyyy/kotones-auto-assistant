@@ -35,6 +35,7 @@ _EFFECT_ASSETS = {
     'preservation': 'exam_exampreservation.webp',
     'concentration': 'exam_examconcentration.webp',
     'lesson_multiplier': 'exam_examlessonvaluemultiple.webp',
+    'pride': 'exam_examlessonvaluemultipledependrevieworaggressive.webp',
     'stamina_consumption_down': 'exam_examstaminaconsumptiondown.webp',
     # Add/down assets are identical: presence never proves the direction.
     'stamina_consumption_modifier': 'exam_examstaminaconsumptiondown.webp',
@@ -42,6 +43,7 @@ _EFFECT_ASSETS = {
 
 _CONFIDENCE_THRESHOLDS = {
     'aggressive': 0.75,
+    'pride': 0.80,
     'parameter_buff': 0.78,
     'lesson_buff': 0.75,
     'review': 0.80,
@@ -131,7 +133,7 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
         # right are usually digits, Japanese labels, or P-item artwork.
         if best_confidence >= threshold and best_rect[0] <= 75:
             x, y, width, height = best_rect
-            if effect in {'review', 'aggressive', 'stamina_consumption_modifier'}:
+            if effect in {'review', 'aggressive', 'pride', 'stamina_consumption_modifier'}:
                 # The same white glyph is also shown on a grey, inactive HUD
                 # diamond. Only the blue, saturated diamond is an active buff.
                 icon = screen[y:y + height, x:x + width]
@@ -139,7 +141,7 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
                     icon, cv2.COLOR_BGR2HSV,
                 )[:, :, 1].mean() < 30:
                     continue
-                if effect == 'aggressive':
+                if effect in {'aggressive', 'pride'}:
                     # Blue scenery around a grey diamond can raise mean
                     # saturation. Require the active diamond's vivid blue.
                     hsv = cv2.cvtColor(icon, cv2.COLOR_BGR2HSV)

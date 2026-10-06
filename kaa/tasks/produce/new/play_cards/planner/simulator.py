@@ -157,6 +157,11 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     genki -= genki_spent
     hp = max(0, hp - (green_cost - genki_spent) - red_cost)
 
+    pride_value = dict(state.effect_values_for_planning).get('pride', 0)
+    pride = (
+        'pride' in state.observed_effects if state.projected_effect_values is None
+        else None if pride_value is None else pride_value == 1
+    )
     modifier = (
         state.projected_stamina_consumption
         if state.projected_effect_values is not None
@@ -207,6 +212,16 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if (
+            verdict != TriggerVerdict.INACTIVE
+            and effect.effect_type == ProduceExamEffectType.ExamLessonValueMultipleDependReviewOrAggressive
+        ):
+            if verdict == TriggerVerdict.ACTIVE and (
+                effect.effect_turn == -1 or (effect.effect_turn or 0) > 0
+            ):
+                pride = True
+            elif pride is not True:
+                pride = None
         if verdict != TriggerVerdict.INACTIVE:
             if effect.effect_type in _RESOURCE_GAIN_MODIFIERS:
                 gain_modifiers.add(_RESOURCE_GAIN_MODIFIERS[effect.effect_type])
@@ -291,6 +306,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
                 hp_known = False
 
     projected_values = dict(state.effect_values_for_planning)
+    if pride is not False or 'pride' in projected_values:
+        projected_values['pride'] = None if pride is None else int(pride)
     balances = {
         'full_power_point': memory.anomaly.full_power_points,
         'lesson_buff': memory.buffs.lesson_buff,

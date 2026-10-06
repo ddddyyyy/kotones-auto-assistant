@@ -1619,3 +1619,75 @@ def test_aggressive_genki_scoring_does_not_certify_payment_or_conversion():
     assert can_afford_play(future, cast(Any, _card('paid', cost=5))) is None
     result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
     assert result.confirmed_output == 0
+
+
+@pytest.mark.parametrize('aggressive,review,expected', [(19,19,1.38), (37,17,1.34), (1,20,1.02), (50,25,1.5), (50,50,1.5), (0,20,1.0)])
+def test_pride_uses_smaller_current_resource_and_caps_at_fifty_percent(aggressive, review, expected):
+    state = BattleState(remaining_turns=4, hp=12, genki=90,
+        buffs=ExamBuffState(aggressive=aggressive, review=review),
+        observed_effects=frozenset({'pride'}),
+        observed_effect_values=(('pride', None), ('aggressive', aggressive), ('review', review)))
+    assert EffectHeuristicEvaluator._output_multiplier(state) == pytest.approx(expected)
+    assert EffectHeuristicEvaluator._output_multiplier_known(state)
+
+
+@pytest.mark.parametrize('values', [(('aggressive', None), ('review', 17)), (('review', 17),), (('aggressive', 57), ('review', 17))])
+def test_pride_does_not_certify_unknown_or_conflicting_resource(values):
+    state = BattleState(remaining_turns=4, hp=12, genki=90,
+        buffs=ExamBuffState(aggressive=37, review=17),
+        observed_effects=frozenset({'pride'}), observed_effect_values=values)
+    assert not EffectHeuristicEvaluator._output_multiplier_known(state)
+
+
+def test_pride_grant_propagates_through_same_card_prefix_without_editing_observation():
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play_prefix
+    state = BattleState(remaining_turns=4, hp=12, genki=90,
+        buffs=ExamBuffState(aggressive=20, review=10),
+        observed_effect_values=(('aggressive',20),('review',10)))
+    card = _card("pride-chain", _effect(ProduceExamEffectType.ExamLessonValueMultipleDependReviewOrAggressive,0,turn=5),
+                 _effect(ProduceExamEffectType.ExamReview,9),
+                 _effect(ProduceExamEffectType.ExamLesson,9))
+    prefix = simulate_play_prefix(state,card,2)
+    assert 'pride' not in state.observed_effects
+    assert dict(prefix.projected_effect_values)['pride'] == 1
+    assert EffectHeuristicEvaluator._output_multiplier(prefix) == pytest.approx(1.38)
+    assert EffectHeuristicEvaluator._output_multiplier_known(prefix)
+
+
+def test_unknown_projected_pride_cannot_certify_output():
+    state = BattleState(remaining_turns=4, hp=12, genki=90,
+        buffs=ExamBuffState(aggressive=20, review=20),
+        projected_effect_values=(('pride',None),('aggressive',20),('review',20)))
+    assert not EffectHeuristicEvaluator._output_multiplier_known(state)
+
+
+def test_pride_combined_good_condition_is_estimate_until_calibrated():
+    state = BattleState(remaining_turns=4, hp=12, genki=90,
+        buffs=ExamBuffState(aggressive=20, review=20,parameter_buff_turns=1),
+        observed_effects=frozenset({'pride'}),
+        observed_effect_values=(('aggressive',20),('review',20)))
+    assert not EffectHeuristicEvaluator._output_multiplier_known(state)
+
+
+@pytest.mark.parametrize('grant_first,expected', [(True,12.42),(False,9.0)])
+def test_pride_same_card_output_obeys_effect_order(grant_first,expected):
+    state = BattleState(remaining_turns=4,hp=20,genki=20,
+        buffs=ExamBuffState(aggressive=19,review=19),
+        observed_effect_values=(('aggressive',19),('review',19)))
+    grant = _effect(ProduceExamEffectType.ExamLessonValueMultipleDependReviewOrAggressive,0,turn=5)
+    output = _effect(ProduceExamEffectType.ExamLesson,9)
+    card = _card('ordered-pride', *( [grant,output] if grant_first else [output,grant]))
+    result = EffectHeuristicEvaluator().evaluate(card,state)
+    assert result.projected_output == pytest.approx(expected)
+    assert result.confirmed_output == pytest.approx(expected)
+
+
+def test_pride_grant_without_duration_does_not_certify_followup():
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    state = BattleState(remaining_turns=4,hp=20,genki=20,
+        buffs=ExamBuffState(aggressive=19,review=19),
+        observed_effect_values=(('aggressive',19),('review',19)))
+    card = _card('invalid-pride', _effect(ProduceExamEffectType.ExamLessonValueMultipleDependReviewOrAggressive,0))
+    after = simulate_play(state,card)
+    assert dict(after.projected_effect_values)['pride'] is None
+    assert not EffectHeuristicEvaluator._output_multiplier_known(after)
