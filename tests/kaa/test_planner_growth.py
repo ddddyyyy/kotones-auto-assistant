@@ -830,3 +830,70 @@ def test_unmodeled_modifier_does_not_block_unrelated_confirmed_zero(resource, ki
     after = simulate_play(initial, _card(green=0, effects=(
         _output(getattr(ProduceExamEffectType, kind), 3),)))
     assert dict(after.effect_values_for_planning)[resource] == 0
+
+
+_UNMODELED_SPECIAL_BALANCE_CASES = [
+    ('ExamAggressiveValueMultiple', 'aggressive', 'ExamCostType_ExamCardPlayAggressive'),
+    ('ExamLessonBuffDependParameterBuff', 'lesson_buff', 'ExamCostType_ExamLessonBuff'),
+    ('ExamLessonBuffPerSearchCount', 'lesson_buff', 'ExamCostType_ExamLessonBuff'),
+    ('ExamParameterBuffDependLessonBuff', 'parameter_buff', 'ExamCostType_ExamParameterBuff'),
+    ('ExamParameterBuffReduce', 'parameter_buff', 'ExamCostType_ExamParameterBuff'),
+    ('ExamParameterBuffMultiplePerTurnReduce', 'parameter_buff_multiple', 'ExamCostType_ExamParameterBuffMultiplePerTurn'),
+    ('ExamReviewDependExamBlock', 'review', 'ExamCostType_ExamReview'),
+    ('ExamReviewDependExamCardPlayAggressive', 'review', 'ExamCostType_ExamReview'),
+    ('ExamReviewPerSearchCount', 'review', 'ExamCostType_ExamReview'),
+    ('ExamReviewValueMultiple', 'review', 'ExamCostType_ExamReview'),
+]
+
+
+@pytest.mark.parametrize('kind,resource,cost_type', _UNMODELED_SPECIAL_BALANCE_CASES)
+@pytest.mark.parametrize('verdict', list(TriggerVerdict))
+def test_unmodeled_direct_special_change_invalidates_only_its_budget(monkeypatch, kind, resource, cost_type, verdict):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    values = tuple((name, 5) for name in (
+        'lesson_buff', 'review', 'aggressive', 'parameter_buff', 'parameter_buff_multiple'))
+    initial = replace(_state(hp=20, growth=()),
+        buffs=ExamBuffState(lesson_buff=5, review=5, aggressive=5,
+            parameter_buff_turns=5, parameter_buff_multiple_turns=5),
+        projected_effect_values=values, observed_effect_values=values)
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 2),)))
+    expected: dict[str, int | None] = dict(values)
+    if verdict != TriggerVerdict.INACTIVE:
+        expected[resource] = None
+    assert dict(after.effect_values_for_planning) == expected
+    follow = _card(green=0)
+    follow.cost_type = cost_type
+    follow.cost_value = 1
+    assert can_afford_play(after, follow) is (True if verdict == TriggerVerdict.INACTIVE else None)
+    assert after.observed_effect_values == values
+    assert after.buffs == initial.buffs
+
+
+@pytest.mark.parametrize('kind', ['ExamReviewPerSearchCount', 'ExamReviewValueMultiple'])
+def test_unmodeled_review_change_does_not_confirm_same_card_conversion(kind):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    initial = replace(_state(hp=20, growth=()), buffs=ExamBuffState(review=5),
+        projected_effect_values=(('review', 5),))
+    card = _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 2),
+        _output(ProduceExamEffectType.ExamLessonDependExamReview, 1000)))
+    result = EffectHeuristicEvaluator().evaluate(card, initial)
+    assert result.projected_output == 5
+    assert result.confirmed_output == 0
+
+
+@pytest.mark.parametrize('kind,resource,gain', [
+    ('ExamReviewValueMultiple', 'review', 'ExamReview'),
+    ('ExamLessonBuffDependParameterBuff', 'lesson_buff', 'ExamLessonBuff'),
+])
+def test_fixed_gain_does_not_restore_balance_after_unmodeled_direct_change(kind, resource, gain):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    initial = replace(_state(hp=20, growth=()), buffs=ExamBuffState(review=5, lesson_buff=5),
+        projected_effect_values=(('review', 5), ('lesson_buff', 5)))
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 2),
+        _output(getattr(ProduceExamEffectType, gain), 3))))
+    assert dict(after.effect_values_for_planning)[resource] is None
+    assert getattr(after.buffs, resource) == 8

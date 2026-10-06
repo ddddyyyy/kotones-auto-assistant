@@ -32,6 +32,20 @@ _RESOURCE_EFFECTS = {
 }
 
 
+_UNMODELED_SPECIAL_RESOURCE_EFFECTS = {
+    ProduceExamEffectType.ExamAggressiveValueMultiple: 'aggressive',
+    ProduceExamEffectType.ExamLessonBuffDependParameterBuff: 'lesson_buff',
+    ProduceExamEffectType.ExamLessonBuffPerSearchCount: 'lesson_buff',
+    ProduceExamEffectType.ExamParameterBuffDependLessonBuff: 'parameter_buff',
+    ProduceExamEffectType.ExamParameterBuffReduce: 'parameter_buff',
+    ProduceExamEffectType.ExamParameterBuffMultiplePerTurnReduce: 'parameter_buff_multiple',
+    ProduceExamEffectType.ExamReviewDependExamBlock: 'review',
+    ProduceExamEffectType.ExamReviewDependExamCardPlayAggressive: 'review',
+    ProduceExamEffectType.ExamReviewPerSearchCount: 'review',
+    ProduceExamEffectType.ExamReviewValueMultiple: 'review',
+}
+
+
 _UNMODELED_GENKI_EFFECTS = {
     ProduceExamEffectType.ExamBlockAddMultipleAggressive,
     ProduceExamEffectType.ExamBlockPerUseCardCount,
@@ -170,6 +184,13 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if (
+            verdict != TriggerVerdict.INACTIVE
+            and effect.effect_type in _UNMODELED_SPECIAL_RESOURCE_EFFECTS
+        ):
+            # An unmodeled direct transfer/scaling invalidates an existing
+            # numeric budget too, not just a newly seeded absent-resource zero.
+            uncertain_balances.add(_UNMODELED_SPECIAL_RESOURCE_EFFECTS[effect.effect_type])
         if verdict != TriggerVerdict.INACTIVE and effect.effect_type not in _RESOURCE_EFFECTS:
             # A zero observed before an unmodeled related modifier/transfer
             # cannot establish this resource's balance after the card.
