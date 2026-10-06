@@ -374,20 +374,21 @@ def do_cards(
         drink_use_button = find_drink_use_button(img)
         if drink_use_button is not None:
             device.click(drink_use_button)
-            if enable_drink and drinks_list is not None:
-                if drink_selected_idx < 0 or drink_selected_idx >= len(drinks_list):
-                    logger.warning('`drink_selected_idx` dismatches, internal error!')
+            if enable_drink:
+                if drinks_list is None or not 0 <= drink_selected_idx < len(drinks_list):
+                    logger.info('Drink dialog had no pending selection; refresh slots after use.')
                 else:
                     drinks_list.pop(drink_selected_idx)
-                    drink_selected_idx = -1 # Reset
-                    drink_retries = 0 # 逻辑正常运作，重置drink_retries
                     logger.info('Used selected drink.')
-                    sleep(3) # 饮品动画
-                    img = device.screenshot()
-                    drinks_list = locate_all_drinks_in_3_drink_slots(img)
-                    logger.info("Rematched %d drinks. Detailed: %s", len(drinks_list), str(drinks_list))
+                drink_selected_idx = -1
+                drink_retries = 0
+                sleep(3)  # 正常选择与恢复已有弹窗都等待饮用动画。
+                img = device.screenshot()
+                drinks_list = locate_all_drinks_in_3_drink_slots(img)
+                logger.info("Rematched %d drinks. Detailed: %s", len(drinks_list), str(drinks_list))
             else:
                 logger.warning('Unexpected use drink dialog.')
+                sleep(1)
             continue
         # 技能卡效果无法发动对话框（同时检测对话框标题与确认按钮，避免单一按钮误触）
         # 参考：R.Common.TextGameUpdate.exists() and R.Common.ButtonConfirm.exists() / R.InProduce.DialogCardChangeConfirm
@@ -412,6 +413,7 @@ def do_cards(
                 device.click(Rect(xywh=drinks_list[drink_selected_idx][1]))
                 # Log
                 logger.info('Click drink %s', drinks_list[0][0].name)
+                sleep(1)  # 等待详情展开后再复核，避免动画内耗尽重试。
             else:
                 # Log
                 logger.info('Drink %s cannot be process, skip', drinks_list[0][0].name)
