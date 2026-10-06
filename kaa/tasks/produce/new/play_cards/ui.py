@@ -330,11 +330,28 @@ def _read_card_title(
         return None
     crop = img[y+20:y+46, x-100:x+100]
     _, suffix_start = _title_upgrade_suffix(crop)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    ink_threshold = 150
+    # Unavailable titles dim the background as well as the suffix. Fixed
+    # bright-title masks merge both into one component. Isolate only a
+    # trailing cross found at the same position by two current-crop masks.
+    if suffix_start is None and cv2.mean(gray)[0] < 150:
+        threshold, _ = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+        )
+        dim_suffixes = [
+            _upgrade_suffix((gray < level).astype('uint8'))
+            for level in (max(0, threshold - 10), threshold)
+        ]
+        if dim_suffixes[0][0] > 0 and dim_suffixes[0] == dim_suffixes[1]:
+            suffix_start = dim_suffixes[0][1]
+            ink_threshold = int(threshold)
     # A frame at the left edge can be recognized as a leading '1'. Remove
     # only a thin component touching both vertical crop edges; title glyphs
     # leave padding above and below. Do not delete characters from OCR text.
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    _, _, components, _ = cv2.connectedComponentsWithStats((gray < 150).astype('uint8'))
+    _, _, components, _ = cv2.connectedComponentsWithStats(
+        (gray < ink_threshold).astype('uint8'),
+    )
     frame_end = max(
         (int(cx + width) for cx, cy, width, height, _area in components[1:]
          if cx <= 12 and cy == 0 and width <= 8 and height == crop.shape[0]),
