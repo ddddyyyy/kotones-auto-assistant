@@ -739,3 +739,94 @@ def test_unknown_multiplier_cannot_claim_certain_perfect_target(reading, bonus):
     assert result.projected_output == 15
     assert ('足量达标' in result.reason) == bonus
     assert result.confirmed_output == (15 if bonus else 0)
+
+
+_CONFIRMED_ZERO_RESOURCE_CASES = [
+    ('lesson_buff', 'lesson_buff', 'ExamLessonBuff'),
+    ('review', 'review', 'ExamReview'),
+    ('aggressive', 'aggressive', 'ExamCardPlayAggressive'),
+    ('parameter_buff', 'parameter_buff_turns', 'ExamParameterBuff'),
+    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 'ExamParameterBuffMultiplePerTurn'),
+    ('full_power_point', 'full_power_points', 'ExamFullPowerPoint'),
+]
+
+
+@pytest.mark.parametrize('resource,field,kind', _CONFIRMED_ZERO_RESOURCE_CASES)
+@pytest.mark.parametrize('source,expected', [
+    ('absence', 3), ('numeric', 3), ('unknown_reading', None),
+    ('old_absence', None), ('positive_model', None), ('present_icon', None),
+])
+def test_current_confirmed_zero_can_seed_resource_projection_without_reviving_unknown(
+    resource, field, kind, source, expected,
+):
+    from kaa.tasks.produce.new.play_cards.planner.state import AnomalyState, ExamBuffState
+    modeled = 5 if source == 'positive_model' else 0
+    initial = BattleState(remaining_turns=3, hp=20, genki=0, playable_count=2,
+        buffs=ExamBuffState(**({field: modeled} if resource != 'full_power_point' else {})),
+        anomaly=AnomalyState(full_power_points=modeled if resource == 'full_power_point' else 0),
+        confirmed_absent_effects=frozenset({resource}),
+        observed_effect_values=((resource, 0),) if source == 'numeric' else (
+            ((resource, None),) if source == 'unknown_reading' else ()),
+        projected_effect_values=() if source == 'old_absence' else None,
+        observed_effects=frozenset({resource}) if source == 'present_icon' else frozenset())
+    card = _card(green=0, effects=(_output(getattr(ProduceExamEffectType, kind), 3),))
+    after = simulate_play(initial, card)
+    assert dict(after.effect_values_for_planning).get(resource) == expected
+    assert after.observed_effect_values == initial.observed_effect_values
+    assert initial.projected_effect_values == (() if source == 'old_absence' else None)
+
+
+@pytest.mark.parametrize('resource,field,kind', _CONFIRMED_ZERO_RESOURCE_CASES)
+def test_unknown_growth_still_invalidates_current_confirmed_zero_after_grant(monkeypatch, resource, field, kind):
+    from kaa.db import card_status_enchant as db
+    monkeypatch.setattr(db, 'get_card_status_enchant', lambda _: SimpleNamespace(
+        cost_changed=False, output_changed=True))
+    initial = BattleState(remaining_turns=3, hp=20, genki=0,
+        confirmed_absent_effects=frozenset({resource}))
+    card = _card(green=0, effects=(_output(getattr(ProduceExamEffectType, kind), 3),))
+    card._produce_card_status_enchant_id = 'enchant'
+    after = simulate_play(initial, card)
+    assert dict(after.effect_values_for_planning).get(resource) is None
+    assert can_afford_play(after, _card(green=0)) is True
+
+
+@pytest.mark.parametrize('resource,kind,multiplier', [
+    ('parameter_buff', 'ExamParameterBuff', 1.5),
+    ('parameter_buff_multiple', 'ExamParameterBuffMultiplePerTurn', 1.1),
+])
+def test_confirmed_absent_multiplier_grant_can_certify_followup_output(resource, kind, multiplier):
+    initial = BattleState(remaining_turns=3, hp=20, genki=0,
+        confirmed_absent_effects=frozenset({resource}))
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 3),)))
+    result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)), after)
+    assert result.projected_output == pytest.approx(10 * multiplier)
+    assert result.confirmed_output == pytest.approx(10 * multiplier)
+
+
+@pytest.mark.parametrize('resource,kind', [
+    ('lesson_buff', 'ExamLessonBuffAdditive'),
+    ('review', 'ExamReviewPerSearchCount'),
+    ('aggressive', 'ExamAggressiveAdditive'),
+    ('parameter_buff', 'ExamParameterBuffReduce'),
+    ('parameter_buff_multiple', 'ExamParameterBuffMultiplePerTurnReduce'),
+    ('full_power_point', 'ExamFullPowerPointAdditive'),
+])
+def test_confirmed_zero_is_not_promoted_through_unmodeled_related_effect(resource, kind):
+    initial = BattleState(remaining_turns=3, hp=20, genki=0,
+        confirmed_absent_effects=frozenset({resource}))
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 3),)))
+    assert dict(after.effect_values_for_planning).get(resource) is None
+
+
+@pytest.mark.parametrize('resource,kind', [
+    ('parameter_buff', 'ExamParameterBuffMultiplePerTurnReduce'),
+    ('parameter_buff_multiple', 'ExamParameterBuffReduce'),
+])
+def test_unmodeled_modifier_does_not_block_unrelated_confirmed_zero(resource, kind):
+    initial = BattleState(remaining_turns=3, hp=20, genki=0,
+        confirmed_absent_effects=frozenset({resource}))
+    after = simulate_play(initial, _card(green=0, effects=(
+        _output(getattr(ProduceExamEffectType, kind), 3),)))
+    assert dict(after.effect_values_for_planning)[resource] == 0

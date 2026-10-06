@@ -150,6 +150,15 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     }
     growth = list(state.projected_card_growth)
     uncertain_balances = growth_uncertain_balances
+    unmodeled_zero_balances: set[str] = set()
+    resource_prefixes = {
+        'lesson_buff': 'ExamLessonBuff',
+        'review': 'ExamReview',
+        'aggressive': 'ExamAggressive',
+        'parameter_buff_multiple': 'ExamParameterBuffMultiplePerTurn',
+        'parameter_buff': 'ExamParameterBuff',
+        'full_power_point': 'ExamFullPowerPoint',
+    }
     if not projected_growth_payment(state, card)[2]:
         # Unknown growth may change a special fee or replace its type. Paying
         # the DB base amount does not establish the next card's resource budget.
@@ -161,6 +170,14 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if verdict != TriggerVerdict.INACTIVE and effect.effect_type not in _RESOURCE_EFFECTS:
+            # A zero observed before an unmodeled related modifier/transfer
+            # cannot establish this resource's balance after the card.
+            kind = effect.effect_type.value.removeprefix('ProduceExamEffectType_')
+            for resource, prefix in resource_prefixes.items():
+                if kind.startswith(prefix):
+                    unmodeled_zero_balances.add(resource)
+                    break
         if verdict != TriggerVerdict.INACTIVE and effect.effect_type == ProduceExamEffectType.ExamAddGrowEffect:
             growth.append((getattr(effect, '_id', ''), verdict == TriggerVerdict.ACTIVE))
         if verdict == TriggerVerdict.UNKNOWN and effect.effect_type in _RESOURCE_EFFECTS:
@@ -230,6 +247,18 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     }
     before_balances = special_resource_balances(state)
     for effect in SPECIAL_COST_EFFECTS.values():
+        if (
+            state.projected_effect_values is None
+            and effect not in projected_values
+            and effect in state.confirmed_absent_effects
+            and effect not in state.observed_effects
+            and before_balances[effect] == 0
+            and effect not in unmodeled_zero_balances
+        ):
+            # Current reconciled absence establishes a zero starting balance.
+            # It is a search input, never a fabricated numeric HUD reading.
+            # Do not reuse old absence after projection, or override conflicts.
+            projected_values[effect] = 0
         if projected_values.get(effect) is not None:
             projected_values[effect] = (
                 balances[effect]
