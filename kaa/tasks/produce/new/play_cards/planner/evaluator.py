@@ -93,6 +93,7 @@ class EffectHeuristicEvaluator:
 
     _DIRECT = {ProduceExamEffectType.ExamLesson, ProduceExamEffectType.ExamLessonFix}
     _DEFENCE = {
+        ProduceExamEffectType.ExamBlockAddMultipleAggressive,
         ProduceExamEffectType.ExamBlock,
         ProduceExamEffectType.ExamBlockFix,
         ProduceExamEffectType.ExamStaminaRecoverFix,
@@ -285,6 +286,7 @@ class EffectHeuristicEvaluator:
                 output_inputs_known &= state.exam_score_percent is not None and state.exam_score_percent >= 0
             effect_state = state
             if kind in self._DIRECT | {
+                ProduceExamEffectType.ExamBlockAddMultipleAggressive,
                 ProduceExamEffectType.ExamBlock,
                 ProduceExamEffectType.ExamBlockFix,
                 ProduceExamEffectType.ExamReview,
@@ -336,8 +338,17 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('全力值依赖参数')
             elif kind in self._DEFENCE:
+                if kind == ProduceExamEffectType.ExamBlockAddMultipleAggressive:
+                    # DB value1 is base genki; value2 adds to the ordinary
+                    # aggressive multiplier. This remains a ranking estimate:
+                    # simulator keeps payment/conversion unknown until calibrated.
+                    value += effect_state.buffs.aggressive * (1 + value2 / 1000.0)
+                    reasons.append('干劲依赖元气估算')
                 if (
-                    kind in {ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix}
+                    kind in {
+                        ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
+                        ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+                    }
                     and turns <= 1
                     and not grants_extra_turn
                     and not has_followup_play()
@@ -437,9 +448,6 @@ class EffectHeuristicEvaluator:
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('元气依赖参数')
-            elif kind == ProduceExamEffectType.ExamBlockAddMultipleAggressive:
-                score += state.buffs.aggressive * value / 1000.0
-                reasons.append('干劲依赖元气')
             elif kind == ProduceExamEffectType.ExamMultipleEnthusiasticLesson:
                 output = (
                     effect_state.anomaly.enthusiasm * value / 1000.0

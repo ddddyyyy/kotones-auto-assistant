@@ -1560,3 +1560,62 @@ def test_unknown_count_growth_cannot_be_certified_by_later_addition(monkeypatch)
         projected_card_growth=(('reduce', True), ('add', True)))
     result = EffectHeuristicEvaluator().evaluate(card, state)
     assert result.projected_output == 18 and result.confirmed_output == 0
+
+
+
+@pytest.mark.parametrize('base,bonus,aggressive', [
+    (2, 500, 0), (2, 500, 10), (4, 800, 10), (6, 800, 10),
+    (2, 1300, 10), (20, 0, 10), (2, 500, 3),
+])
+def test_aggressive_genki_scores_base_and_bonus_with_defence_weight(base, bonus, aggressive):
+    evaluator = EffectHeuristicEvaluator()
+    state = BattleState(remaining_turns=3, hp=20, genki=0,
+        buffs=ExamBuffState(aggressive=aggressive))
+    scaled = _card('scaled', _effect(ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+        base, value2=bonus))
+    ordinary = _card('ordinary', _effect(ProduceExamEffectType.ExamBlock,
+        cast(Any, base + aggressive * (1 + bonus / 1000))))
+    actual = evaluator.evaluate(cast(Any, scaled), state)
+    expected = evaluator.evaluate(cast(Any, ordinary), state)
+    assert actual.score == pytest.approx(expected.score)
+    assert actual.confirmed_output == 0
+    assert state.genki == 0
+
+
+@pytest.mark.parametrize('gain_first', [True, False])
+def test_aggressive_genki_estimate_uses_prior_effects_only(gain_first):
+    evaluator = EffectHeuristicEvaluator()
+    gain = _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5)
+    scaled = _effect(ProduceExamEffectType.ExamBlockAddMultipleAggressive, 2, value2=500)
+    block = _effect(ProduceExamEffectType.ExamBlock, cast(Any, 2 + (15 if gain_first else 10) * 1.5))
+    state = BattleState(remaining_turns=3, hp=20, genki=0,
+        buffs=ExamBuffState(aggressive=10))
+    a = _card('scaled', *( [gain, scaled] if gain_first else [scaled, gain] ))
+    b = _card('ordinary', *( [gain, block] if gain_first else [block, gain] ))
+    assert evaluator.evaluate(cast(Any, a), state).score == pytest.approx(
+        evaluator.evaluate(cast(Any, b), state).score)
+    assert state.buffs.aggressive == 10
+
+
+@pytest.mark.parametrize('exam', [True, False])
+def test_terminal_aggressive_genki_has_no_unusable_survival_bonus(exam):
+    state = BattleState(remaining_turns=1, hp=5, genki=0, playable_count=1,
+        is_exam=exam, buffs=ExamBuffState(aggressive=10))
+    card = _card('scaled', _effect(ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+        2, value2=500))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert '终局元气无后续利用' in result.reason
+    assert result.score == EffectHeuristicEvaluator().evaluate(cast(Any, _card('empty')), state).score
+
+
+def test_aggressive_genki_scoring_does_not_certify_payment_or_conversion():
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play, can_afford_play
+    state = BattleState(remaining_turns=3, hp=0, genki=0, playable_count=2,
+        buffs=ExamBuffState(aggressive=10), observed_effect_values=(('aggressive', 10),))
+    card = _card('scaled', _effect(ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+        2, value2=500), _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    future = simulate_play(state, cast(Any, card))
+    assert not future.genki_known
+    assert can_afford_play(future, cast(Any, _card('paid', cost=5))) is None
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.confirmed_output == 0
