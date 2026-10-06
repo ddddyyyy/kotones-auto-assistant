@@ -139,6 +139,16 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
                     icon, cv2.COLOR_BGR2HSV,
                 )[:, :, 1].mean() < 30:
                     continue
+                if effect == 'aggressive':
+                    # Blue scenery around a grey diamond can raise mean
+                    # saturation. Require the active diamond's vivid blue.
+                    hsv = cv2.cvtColor(icon, cv2.COLOR_BGR2HSV)
+                    active_blue = (
+                        (hsv[:, :, 0] >= 85) & (hsv[:, :, 0] <= 115)
+                        & (hsv[:, :, 1] >= 180) & (hsv[:, :, 2] >= 150)
+                    )
+                    if active_blue.mean() < 0.15:
+                        continue
             observations.append(
                 EffectIconObservation(
                     effect,

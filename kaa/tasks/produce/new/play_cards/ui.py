@@ -401,9 +401,13 @@ def _read_card_title(
     except Exception:
         logger.debug('Could not verify masked card title.', exc_info=True)
         return None
-    if len(mask_readings) < 2 or len(confident_titles) != 1:
+    # A high-confidence color reading and a corroborating mask reading
+    # are also two complete readings of this same title. All high-confidence
+    # results above must still agree; a single reading never recovers a card.
+    corroborated = readings + mask_readings
+    if len(corroborated) < 2 or len(confident_titles) != 1:
         return None
-    return mask_readings[0][0], min(confidence for _, confidence in mask_readings)
+    return corroborated[0][0], min(confidence for _, confidence in corroborated)
 
 
 def locate_cards(img: MatLike):
