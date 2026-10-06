@@ -121,11 +121,23 @@ def _title_upgrade_suffix(title: MatLike) -> tuple[int, int | None]:
         & (title[:, :, 0].astype('int16') - title[:, :, 1] > 5)
         & (title[:, :, 0].astype('int16') - title[:, :, 2] > 12)
     )
-    return max(
+    suffix = max(
         (_upgrade_suffix(((gray < 150) | mask).astype('uint8'))
          for mask in (cyan, faded_cyan)),
         key=lambda suffix: suffix[0],
     )
+    if suffix[0]:
+        return suffix
+    # A pale gray title can lose its cross in the normal dark-ink mask.
+    # Require the same trailing cross count and position on both masks of
+    # this crop; retain the existing shape and contiguous-suffix checks.
+    pale_suffixes = [
+        _upgrade_suffix((gray < threshold).astype('uint8'))
+        for threshold in (170, 190)
+    ]
+    if pale_suffixes[0][0] > 0 and pale_suffixes[0] == pale_suffixes[1]:
+        return pale_suffixes[0]
+    return suffix
 
 
 def _count_upgrade_suffix(ink: MatLike) -> int:
