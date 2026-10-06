@@ -29,3 +29,20 @@ def test_item_fire_limit_and_cooldown():
 def test_battle_state_validates_observation_confidence():
     with pytest.raises(ValueError):
         BattleState(remaining_turns=1, hp=10, genki=0, observation_confidence=1.1)
+
+
+@pytest.mark.parametrize('value', [0, 2, 4, 6, 12])
+def test_current_aggressive_hud_replaces_inferred_memory(value):
+    from kaa.tasks.produce.new.play_cards.planner.memory import BattleMemory
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    memory = BattleMemory(buffs=ExamBuffState(aggressive=9, review=4))
+    memory.reconcile_effect_values({'aggressive': value, 'review': 4})
+    assert memory.buffs.aggressive == value
+    assert memory.buffs.review == 4
+    memory.reconcile_effect_values({'aggressive': None, 'review': 4})
+    assert memory.buffs.aggressive == (value or 1)
+    memory.reconcile_effect_values({'review': 4})
+    assert memory.buffs.aggressive == (value or 1)
+    memory.reconcile_effect_values({'review': 4})
+    assert memory.buffs.aggressive == 0
+    assert memory.effect_misses['aggressive'] == 2

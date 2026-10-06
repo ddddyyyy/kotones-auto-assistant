@@ -639,7 +639,7 @@ def test_planner_requires_repeated_hud_absence_before_confirming_zero(monkeypatc
 
     assert 'lesson_buff' not in first.confirmed_absent_effects
     assert second.confirmed_absent_effects == frozenset({
-        'lesson_buff', 'parameter_buff', 'review', 'full_power',
+        'lesson_buff', 'parameter_buff', 'review', 'full_power', 'aggressive',
     })
 
 

@@ -41,6 +41,7 @@ _EFFECT_ASSETS = {
 }
 
 _CONFIDENCE_THRESHOLDS = {
+    'aggressive': 0.75,
     'parameter_buff': 0.78,
     'lesson_buff': 0.75,
     'review': 0.80,
@@ -130,7 +131,7 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
         # right are usually digits, Japanese labels, or P-item artwork.
         if best_confidence >= threshold and best_rect[0] <= 75:
             x, y, width, height = best_rect
-            if effect in {'review', 'stamina_consumption_modifier'}:
+            if effect in {'review', 'aggressive', 'stamina_consumption_modifier'}:
                 # The same white glyph is also shown on a grey, inactive HUD
                 # diamond. Only the blue, saturated diamond is an active buff.
                 icon = screen[y:y + height, x:x + width]
@@ -209,6 +210,7 @@ def _read_effect_value(
         'parameter_buff': (icon_x + 31, icon_y + 24, icon_x + 68, icon_y + 52),
         'lesson_buff': (icon_x + 31, icon_y + 15, icon_x + 103, icon_y + 45),
         'review': (icon_x + 31, icon_y + 24, icon_x + 68, icon_y + 52),
+        'aggressive': (icon_x + 31, icon_y + 24, icon_x + 68, icon_y + 52),
         'full_power_point': (icon_x + 35, icon_y - 3, icon_x + 72, icon_y + 32),
     }
     box = boxes.get(effect)
@@ -244,7 +246,7 @@ def _read_effect_value(
             continue
         raw = result
         normalized = raw.translate(substitutions)
-        if effect == 'full_power_point':
+        if effect in {'full_power_point', 'aggressive'}:
             # Read the entire badge, not the first digit buried in a label.
             if re.fullmatch(r'\d{1,3}', normalized.strip()) is None:
                 continue
@@ -261,7 +263,7 @@ def _read_effect_value(
     if not votes:
         return None
     value, count = votes.most_common(1)[0]
-    if effect == 'full_power_point':
+    if effect in {'full_power_point', 'aggressive'}:
         competing = sum(v for k, v in votes.items() if k != value)
         return value if count >= 3 and competing < 2 else None
     return value if count >= 2 else None

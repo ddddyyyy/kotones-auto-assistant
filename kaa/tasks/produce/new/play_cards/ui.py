@@ -350,9 +350,48 @@ def _read_card_title(
     except Exception:
         logger.debug('Could not verify card title.', exc_info=True)
         return None
-    if len(readings) < 2 or len(confident_titles) != 1:
+    if len(confident_titles) > 1:
         return None
-    return readings[0][0], min(confidence for _, confidence in readings)
+    if len(readings) >= 2:
+        return readings[0][0], min(confidence for _, confidence in readings)
+    # Dim titles may remain low confidence on every color enlargement.
+    # Strip only full-height narrow frame components, then corroborate text
+    # on masks of this same crop. Never override a high-confidence conflict.
+    _, _, edges, _ = cv2.connectedComponentsWithStats((gray < 210).astype('uint8'))
+    left_edge = max(
+        (int(cx + width) for cx, cy, width, height, _area in edges[1:]
+         if cx <= 12 and cy == 0 and width <= 12 and height == gray.shape[0]),
+        default=0,
+    )
+    right_edge = min(
+        (int(cx) for cx, cy, width, height, _area in edges[1:]
+         if cx + width >= gray.shape[1] - 1 and cy == 0
+         and width <= 12 and height == gray.shape[0]),
+        default=gray.shape[1],
+    )
+    clean = gray[:, max(frame_end, left_edge):min(suffix_start or gray.shape[1], right_edge)]
+    if clean.size == 0:
+        return None
+    mask_readings: list[tuple[str, float]] = []
+    try:
+        for threshold in (210, 220):
+            mask = cv2.threshold(clean, threshold, 255, cv2.THRESH_BINARY)[1]
+            for scale in (2, 3):
+                results = jp().ocr(cv2.resize(mask, None, fx=scale, fy=scale))
+                confident_titles.update(
+                    normalize_card_title(result.text) for result in results
+                    if result.confidence >= 0.98
+                )
+                if len(results) == 1 and results[0].confidence >= 0.98:
+                    title = normalize_card_title(results[0].text)
+                    if title:
+                        mask_readings.append((title, results[0].confidence))
+    except Exception:
+        logger.debug('Could not verify masked card title.', exc_info=True)
+        return None
+    if len(mask_readings) < 2 or len(confident_titles) != 1:
+        return None
+    return mask_readings[0][0], min(confidence for _, confidence in mask_readings)
 
 
 def locate_cards(img: MatLike):
@@ -392,12 +431,15 @@ def locate_cards(img: MatLike):
             card_id = result.key.removesuffix('.png')
             for character in CharacterId:
                 card_id = card_id.removesuffix('-' + character.value)
-        elif result_list:
-            # Another image neighbour alone is not proof. Recover only from
-            # independently verified, uniquely resolved same-frame title text.
+        if result_list:
+            # A same-category nearest image can still be the wrong card.
+            # Exposed, corroborated title text must resolve uniquely in the DB.
             title_reading = _read_card_title(img, letter, next_letter)
             if title_reading is not None:
-                card_id = asset_from_card_title(title_reading[0], category)
+                title_asset = asset_from_card_title(title_reading[0], category)
+                if title_asset is not None and title_asset != card_id:
+                    card_id = title_asset
+                    result = None
 
         available = color.find(img, '#7a7d7d', rect=letter) is None
         if card_id is not None:

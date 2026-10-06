@@ -126,6 +126,7 @@ class BattleMemory:
             'lesson_buff': 'lesson_buff',
             'parameter_buff': 'parameter_buff_turns',
             'review': 'review',
+            'aggressive': 'aggressive',
         }
         for effect, field_name in fields.items():
             if effect in observed:
