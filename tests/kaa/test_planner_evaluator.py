@@ -1712,3 +1712,66 @@ def test_unmodeled_visible_percentage_does_not_certify_output(pride, exam):
     assert result.projected_output == baseline.projected_output
     assert not evaluator._output_multiplier_known(replace(visible,
         projected_effect_values=(('aggressive',26),('review',9))))
+
+
+@pytest.mark.parametrize('is_exam', [False, True])
+def test_consuming_conversion_ranks_below_equal_output_that_preserves_genki(is_exam):
+    evaluator = EffectHeuristicEvaluator()
+    state = BattleState(remaining_turns=5, hp=4, genki=20,
+                        is_exam=is_exam, exam_score_percent=100)
+    results = [evaluator.evaluate(cast(Any, _card(
+        'conversion', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000, value2=ratio),
+    )), state) for ratio in (0, 500, 1000)]
+    assert results[0].score > results[1].score > results[2].score
+    assert len({r.projected_output for r in results}) == 1
+    assert len({r.confirmed_output for r in results}) == 1
+
+
+@pytest.mark.parametrize('turns,plays,extra_turn', [(1, 1, False), (1, 2, False), (1, 1, True), (5, 1, False)])
+def test_conversion_only_charges_consumption_when_genki_has_future_use(turns, plays, extra_turn):
+    evaluator = EffectHeuristicEvaluator()
+    state = BattleState(remaining_turns=turns, hp=20, genki=10, playable_count=plays)
+    def evaluate(ratio):
+        effects = [_effect(ProduceExamEffectType.ExamLessonDependBlock, 1000, value2=ratio)]
+        if extra_turn:
+            effects.append(_effect(ProduceExamEffectType.ExamExtraTurn, 1))
+        return evaluator.evaluate(cast(Any, _card('conversion', *effects)), state)
+    keep, spend = evaluate(0), evaluate(1000)
+    if turns == 1 and plays == 1 and not extra_turn:
+        assert keep.score == spend.score
+    else:
+        assert keep.score > spend.score
+    assert keep.confirmed_output == spend.confirmed_output
+
+
+def test_conversion_consumption_uses_current_prefix_balance_not_pre_grant_balance():
+    evaluator = EffectHeuristicEvaluator()
+    state = BattleState(remaining_turns=4, hp=20, genki=0)
+    def evaluate(ratio):
+        return evaluator.evaluate(cast(Any, _card('conversion',
+            _effect(ProduceExamEffectType.ExamBlockFix, 10),
+            _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000, value2=ratio),
+        )), state)
+    assert evaluate(0).score > evaluate(1000).score
+    assert evaluate(0).projected_output == evaluate(1000).projected_output
+
+
+def test_unknown_genki_does_not_invent_consumption_cost_or_confirm_output():
+    evaluator = EffectHeuristicEvaluator()
+    state = BattleState(remaining_turns=4, hp=20, genki=10, genki_known=False)
+    results = [evaluator.evaluate(cast(Any, _card('conversion',
+        _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000, value2=ratio),
+    )), state) for ratio in (0, 1000)]
+    assert results[0].score == results[1].score
+    assert all(r.confirmed_output == 0 for r in results)
+
+
+def test_consumption_cost_retains_existing_low_hp_survival_priority():
+    evaluator = EffectHeuristicEvaluator()
+    def loss(hp):
+        state = BattleState(remaining_turns=4, hp=hp, genki=10, is_exam=True, exam_score_percent=100)
+        results = [evaluator.evaluate(cast(Any, _card('conversion',
+            _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000, value2=ratio),
+        )), state) for ratio in (0, 1000)]
+        return results[0].score - results[1].score
+    assert loss(4) > loss(20) > 0

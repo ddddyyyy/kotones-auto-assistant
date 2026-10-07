@@ -233,6 +233,17 @@ class EffectHeuristicEvaluator:
                 multiplier *= max(0.1, min(1.0, state.score_gap / 50.0))
             return multiplier * (0.35 if cross_plan else 1.0)
 
+        def genki_survival_value(resource_state: BattleState) -> float:
+            if resource_state.is_exam:
+                return (
+                    1.1 if not resource_state.hp_known
+                    else 2.0 if resource_state.hp <= 5 else 0.2
+                )
+            return (
+                1.625 if not resource_state.hp_known
+                else 2.5 if resource_state.hp <= 8 else 0.75
+            )
+
         uncertain_output_state = False
         output_state_effects = {
             ProduceExamEffectType.ExamParameterBuff,
@@ -368,17 +379,7 @@ class EffectHeuristicEvaluator:
                     # recovery is different: it can carry into later lessons.
                     reasons.append('终局元气无后续利用')
                     continue
-                if state.is_exam:
-                    survival = (
-                        1.1 if not state.hp_known
-                        else 2.0 if state.hp <= 5 else 0.2
-                    )
-                else:
-                    survival = (
-                        1.625 if not state.hp_known
-                        else 2.5 if state.hp <= 8 else 0.75
-                    )
-                score += value * survival
+                score += value * genki_survival_value(state)
                 reasons.append('生存')
             elif kind in self._SETUP:
                 effective_value = value if value > 0 else max(1.0, float(duration))
@@ -448,6 +449,17 @@ class EffectHeuristicEvaluator:
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('元气依赖参数')
+                if (
+                    effect_state.genki_known
+                    and 0 < value2 <= 1000
+                    and (turns > 1 or grants_extra_turn or has_followup_play())
+                ):
+                    # Consumption is an option-cost estimate, not an exact
+                    # post-play balance. Reuse defence's survival value; do
+                    # not invent future draws or another conversion's output.
+                    spent_genki = max(0, effect_state.genki) * value2 / 1000.0
+                    score -= spent_genki * genki_survival_value(effect_state)
+                    reasons.append('元气转换消耗后续生存价值')
             elif kind == ProduceExamEffectType.ExamMultipleEnthusiasticLesson:
                 output = (
                     effect_state.anomaly.enthusiasm * value / 1000.0
