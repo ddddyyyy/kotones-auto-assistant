@@ -150,6 +150,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         memory.anomaly.extra_play_count - state.anomaly.extra_play_count
     )
 
+    stance_uncertain = state.projected_stance_uncertain
     hp = state.hp
     genki = state.genki
     green_cost, red_cost = play_cost(state, card)
@@ -212,6 +213,19 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if (
+            verdict == TriggerVerdict.UNKNOWN
+            and effect.effect_type in {
+                ProduceExamEffectType.ExamConcentration,
+                ProduceExamEffectType.ExamPreservation,
+                ProduceExamEffectType.ExamStanceReset,
+            }
+            and not state.anomaly.full_power_active
+            and not state.anomaly.stance_locked
+        ):
+            # Skipping a conditional switch leaves only the old estimate.
+            # Its possible level and switching history are not known.
+            stance_uncertain = True
         if (
             verdict != TriggerVerdict.INACTIVE
             and effect.effect_type == ProduceExamEffectType.ExamLessonValueMultipleDependReviewOrAggressive
@@ -370,6 +384,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         buffs=memory.buffs,
         projected_effect_values=tuple(projected_values.items()),
         projected_stamina_consumption=modifier,
+        projected_stance_uncertain=stance_uncertain,
         # Green payment spills into HP when genki is insufficient. An unknown
         # genki balance cannot establish exact remaining HP after that payment.
         hp_known=hp_known,

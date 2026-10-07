@@ -131,6 +131,13 @@ class BattleState:
     with no trusted numeric balances. Raw observed_effect_values stay intact.
     """
 
+    projected_stance_uncertain: bool = False
+    """A possible conditional stance change in search, never a HUD reading.
+
+    Keep the modeled stance for ranking; it cannot prove later costs or output
+    multipliers. Further grants do not resolve its level or switching history.
+    """
+
     projected_stamina_consumption: Literal['half', 'unknown'] | None = None
     """Same-turn search modifier, never a HUD observation.
 

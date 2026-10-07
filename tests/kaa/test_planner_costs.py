@@ -253,6 +253,7 @@ def test_raw_state_cannot_use_a_projection_as_a_hud_discount():
 def resource_effect_card(kind, value=2):
     result = reduction_card(kind, turn=0, stamina=0)
     result.play_effects[0].produce_exam_effect.effect_value1 = value
+    result.play_effects[0].produce_exam_effect.effect_count = 1
     return result
 
 
@@ -492,3 +493,53 @@ def test_unfunded_fractional_stance_cost_is_not_certified_free(stance):
     assert play_cost(state, card(stamina=1)) == (0, 0)
     assert can_afford_play(state, card(stamina=1)) is None
     assert can_afford_play(state, card()) is True
+
+
+@pytest.mark.parametrize('kind', ['ExamConcentration', 'ExamPreservation', 'ExamStanceReset'])
+def test_unknown_stance_switch_cannot_prove_followup_cost_or_output(monkeypatch, kind):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    state = BattleState(remaining_turns=4, hp=20, genki=20)
+    future = simulate_play(state, resource_effect_card(kind, 1))
+    assert future.projected_stance_uncertain
+    assert future.hp_known and future.genki_known
+    assert can_afford_play(future, card(stamina=2)) is None
+    assert can_afford_play(future, card()) is True
+    output = resource_effect_card('ExamLesson', 10)
+    result = EffectHeuristicEvaluator().evaluate(output, future)
+    assert result.projected_output == 10 and result.confirmed_output == 0
+    assert not state.projected_stance_uncertain
+
+
+@pytest.mark.parametrize('kind', ['ExamConcentration', 'ExamPreservation', 'ExamStanceReset'])
+@pytest.mark.parametrize('verdict,locked,full', [
+    ('inactive', False, False), ('unknown', True, False), ('unknown', False, True),
+])
+def test_ineffective_unknown_stance_switch_keeps_payment_proof(monkeypatch, kind, verdict, locked, full):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict(verdict))
+    state = BattleState(remaining_turns=4, hp=20, genki=20,
+                        anomaly=AnomalyState(stance_locked=locked, full_power_active=full))
+    future = simulate_play(state, resource_effect_card(kind, 1))
+    assert not future.projected_stance_uncertain
+    assert can_afford_play(future, card(stamina=2)) is True
+
+
+@pytest.mark.parametrize('kind', ['ExamConcentration', 'ExamPreservation', 'ExamStanceReset'])
+def test_known_later_switch_does_not_resolve_unknown_stance_history(kind):
+    state = BattleState(remaining_turns=4, hp=20, genki=20, projected_stance_uncertain=True)
+    future = simulate_play(state, resource_effect_card(kind, 1))
+    assert future.projected_stance_uncertain
+    assert can_afford_play(future, card(stamina=2)) is None
+    assert EffectHeuristicEvaluator().evaluate(resource_effect_card('ExamLesson', 10), future).confirmed_output == 0
+
+
+def test_full_power_output_and_cost_bypass_uncertain_stance_estimate():
+    state = BattleState(remaining_turns=4, hp=20, genki=20, projected_stance_uncertain=True,
+                        anomaly=AnomalyState(full_power_active=True))
+    assert can_afford_play(state, card(stamina=2)) is True
+    result = EffectHeuristicEvaluator().evaluate(resource_effect_card('ExamLesson', 10), state)
+    assert result.projected_output == result.confirmed_output == 30
