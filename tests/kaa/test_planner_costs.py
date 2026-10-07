@@ -361,3 +361,76 @@ def test_free_grant_does_not_resolve_ambiguous_current_modifier():
     assert can_afford_play(after, card(stamina=4)) is None
     # A fresh observation without the glyph must not inherit old uncertainty.
     assert can_afford_play(BattleState(remaining_turns=2, hp=20, genki=20), card(stamina=4)) is True
+
+
+def conversion_card(ratio=1000, trigger=''):
+    from kaa.db.constants import ProduceExamEffectType
+    result = card()
+    result.play_effects = [SimpleNamespace(
+        _produce_exam_trigger_id=trigger,
+        produce_exam_effect=SimpleNamespace(
+            effect_type=ProduceExamEffectType.ExamLessonDependBlock,
+            effect_value1=3200, effect_value2=ratio, effect_count=1,
+            effect_turn=0,
+        ),
+    )]
+    return result
+
+
+@pytest.mark.parametrize('ratio', [500, 1000])
+def test_conversion_cannot_reuse_spent_genki_for_followup_payment_or_output(ratio):
+    before = BattleState(remaining_turns=4, hp=0, genki=45, playable_count=2)
+    after = simulate_play(before, conversion_card(ratio))
+    assert not after.genki_known
+    assert can_afford_play(after, card(stamina=30)) is None
+    result = EffectHeuristicEvaluator().evaluate(conversion_card(0), after)
+    assert result.confirmed_output == 0
+    if ratio == 1000:
+        assert after.genki == 0
+        assert result.projected_output == 0
+    else:
+        # Half-consumption rounding is uncalibrated: no invented exact value.
+        assert after.genki == before.genki
+    assert before.genki_known and before.genki == 45
+
+
+def test_nonconsuming_conversion_preserves_known_genki_budget():
+    before = BattleState(remaining_turns=4, hp=0, genki=45, playable_count=2)
+    after = simulate_play(before, conversion_card(0))
+    assert after.genki == 45 and after.genki_known
+    assert can_afford_play(after, card(stamina=30)) is True
+
+
+@pytest.mark.parametrize('verdict_name', ['INACTIVE', 'UNKNOWN', 'ACTIVE'])
+def test_conversion_only_clears_estimate_for_definitely_active_full_consumption(monkeypatch, verdict_name):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    verdict = TriggerVerdict[verdict_name]
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    before = BattleState(remaining_turns=4, hp=20, genki=45)
+    after = simulate_play(before, conversion_card(trigger='condition'))
+    assert after.genki == (0 if verdict_name == 'ACTIVE' else 45)
+    assert after.genki_known == (verdict_name == 'INACTIVE')
+
+
+def test_later_genki_grant_does_not_restore_consumed_unknown_budget():
+    from kaa.db.constants import ProduceExamEffectType
+    full = conversion_card()
+    full.play_effects.append(SimpleNamespace(
+        _produce_exam_trigger_id='',
+        produce_exam_effect=SimpleNamespace(
+            effect_type=ProduceExamEffectType.ExamBlockFix,
+            effect_value1=10, effect_value2=0, effect_turn=0,
+        ),
+    ))
+    after = simulate_play(BattleState(remaining_turns=4, hp=20, genki=45), full)
+    assert after.genki == 10 and not after.genki_known
+
+
+def test_consumption_prevents_same_card_second_conversion_from_claiming_output():
+    full = conversion_card()
+    full.play_effects.extend(conversion_card(0).play_effects)
+    state = BattleState(remaining_turns=4, hp=20, genki=45)
+    result = EffectHeuristicEvaluator().evaluate(full, state)
+    assert result.projected_output == 144
+    assert result.confirmed_output == 144

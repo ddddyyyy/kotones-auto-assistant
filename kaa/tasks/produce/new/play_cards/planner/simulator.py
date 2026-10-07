@@ -263,6 +263,17 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             genki_known = False
         if verdict == TriggerVerdict.UNKNOWN and effect.effect_type == ProduceExamEffectType.ExamStaminaRecoverFix:
             hp_known = False
+        if (
+            verdict != TriggerVerdict.INACTIVE
+            and effect.effect_type == ProduceExamEffectType.ExamLessonDependBlock
+            and (effect.effect_value2 or 0) != 0
+        ):
+            # Consumption/rounding is not a trusted future payment balance.
+            # A definitely active full conversion has no genki left even as
+            # a ranking estimate; retain UNKNOWN for its resource budget.
+            genki_known = False
+            if verdict == TriggerVerdict.ACTIVE and effect.effect_value2 == 1000:
+                genki = 0
         if verdict != TriggerVerdict.INACTIVE:
             # These direct resource changes need unobserved maxima, counters
             # or uncalibrated rules. Skipping their amount is only an estimate;
