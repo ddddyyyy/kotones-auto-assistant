@@ -107,6 +107,16 @@ def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
     green, red, growth_known = projected_growth_payment(state, card)
     if not growth_known:
         return False
+    if not state.anomaly.full_power_active:
+        divisor = {
+            AnomalyStance.PRESERVATION: 2,
+            AnomalyStance.PRESERVATION_2: 4,
+        }.get(state.anomaly.stance, 1)
+        if green % divisor or red % divisor:
+            # Fractional stance costs have no calibrated rounding rule.
+            # Python round may estimate zero; it cannot prove a free play
+            # or an exact resource balance for the next card.
+            return False
     if (green or red) and 'stamina_consumption_modifier' in state.observed_effects:
         # The current HUD uses the same glyph for increased/reduced costs.
         # Neither the base cost nor a later half grant resolves its direction.

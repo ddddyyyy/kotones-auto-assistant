@@ -434,3 +434,61 @@ def test_consumption_prevents_same_card_second_conversion_from_claiming_output()
     result = EffectHeuristicEvaluator().evaluate(full, state)
     assert result.projected_output == 144
     assert result.confirmed_output == 144
+
+
+@pytest.mark.parametrize('stance,amount', [
+    (AnomalyStance.PRESERVATION, 1),
+    (AnomalyStance.PRESERVATION, 3),
+    (AnomalyStance.PRESERVATION_2, 1),
+    (AnomalyStance.PRESERVATION_2, 2),
+    (AnomalyStance.PRESERVATION_2, 3),
+    (AnomalyStance.PRESERVATION_2, 5),
+])
+@pytest.mark.parametrize('red', [False, True])
+def test_fractional_stance_cost_does_not_certify_payment_or_later_balance(stance, amount, red):
+    from kaa.tasks.produce.new.play_cards.planner.costs import projected_cost_supported
+    state = BattleState(remaining_turns=4, hp=20, genki=20,
+                        anomaly=AnomalyState(stance=stance))
+    paid = card(force=amount) if red else card(stamina=amount)
+    assert not projected_cost_supported(state, paid)
+    assert can_afford_play(state, paid) is None
+    after = simulate_play(state, paid)
+    assert not after.hp_known and not after.genki_known
+    assert can_afford_play(after, card(stamina=1, force=1)) is None
+    assert state.hp == state.genki == 20
+
+
+@pytest.mark.parametrize('stance,amount', [
+    (AnomalyStance.NORMAL, 1),
+    (AnomalyStance.AGGRESSIVE, 1),
+    (AnomalyStance.PRESERVATION, 2),
+    (AnomalyStance.PRESERVATION_2, 4),
+    (AnomalyStance.PRESERVATION_2, 0),
+])
+def test_integral_stance_cost_keeps_existing_payment_proof(stance, amount):
+    state = BattleState(remaining_turns=4, hp=20, genki=20,
+                        anomaly=AnomalyState(stance=stance))
+    paid = card(stamina=amount, force=amount)
+    assert can_afford_play(state, paid) is True
+    after = simulate_play(state, paid)
+    assert after.hp_known and after.genki_known
+
+
+@pytest.mark.parametrize('stance', [AnomalyStance.PRESERVATION, AnomalyStance.PRESERVATION_2])
+def test_full_power_bypasses_fractional_stance_cost(stance):
+    state = BattleState(remaining_turns=4, hp=20, genki=20,
+                        anomaly=AnomalyState(stance=stance, full_power_active=True))
+    paid = card(stamina=1, force=1)
+    assert play_cost(state, paid) == (1, 1)
+    assert can_afford_play(state, paid) is True
+    after = simulate_play(state, paid)
+    assert after.hp_known and after.genki_known
+
+
+@pytest.mark.parametrize('stance', [AnomalyStance.PRESERVATION, AnomalyStance.PRESERVATION_2])
+def test_unfunded_fractional_stance_cost_is_not_certified_free(stance):
+    state = BattleState(remaining_turns=4, hp=0, genki=0,
+                        anomaly=AnomalyState(stance=stance))
+    assert play_cost(state, card(stamina=1)) == (0, 0)
+    assert can_afford_play(state, card(stamina=1)) is None
+    assert can_afford_play(state, card()) is True
