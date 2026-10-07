@@ -35,6 +35,7 @@ _EFFECT_ASSETS = {
     'preservation': 'exam_exampreservation.webp',
     'concentration': 'exam_examconcentration.webp',
     'lesson_multiplier': 'exam_examlessonvaluemultiple.webp',
+    'lesson_value_up': 'exam_examlessonvaluemultipledown.webp',
     'pride': 'exam_examlessonvaluemultipledependrevieworaggressive.webp',
     'stamina_consumption_down': 'exam_examstaminaconsumptiondown.webp',
     # Add/down assets are identical: presence never proves the direction.
@@ -44,6 +45,7 @@ _EFFECT_ASSETS = {
 _CONFIDENCE_THRESHOLDS = {
     'aggressive': 0.75,
     'pride': 0.80,
+    'lesson_value_up': 0.85,
     'parameter_buff': 0.78,
     'lesson_buff': 0.75,
     'review': 0.80,
@@ -74,7 +76,9 @@ def _icon_alpha(effect: str) -> MatLike:
         raise FileNotFoundError(f'Cannot load effect icon asset: {effect}')
     alpha = image[:, :, 3]
     x, y, width, height = cv2.boundingRect((alpha > 32).astype('uint8'))
-    return alpha[y : y + height, x : x + width]
+    glyph = alpha[y : y + height, x : x + width]
+    # The HUD uses a plain upward arrow; reuse the inverse decrease glyph.
+    return cv2.flip(glyph, 0) if effect == 'lesson_value_up' else glyph
 
 
 def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
@@ -133,7 +137,7 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
         # right are usually digits, Japanese labels, or P-item artwork.
         if best_confidence >= threshold and best_rect[0] <= 75:
             x, y, width, height = best_rect
-            if effect in {'review', 'aggressive', 'pride', 'stamina_consumption_modifier'}:
+            if effect in {'review', 'aggressive', 'pride', 'lesson_value_up', 'stamina_consumption_modifier'}:
                 # The same white glyph is also shown on a grey, inactive HUD
                 # diamond. Only the blue, saturated diamond is an active buff.
                 icon = screen[y:y + height, x:x + width]
@@ -141,7 +145,7 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
                     icon, cv2.COLOR_BGR2HSV,
                 )[:, :, 1].mean() < 30:
                     continue
-                if effect in {'aggressive', 'pride'}:
+                if effect in {'aggressive', 'pride', 'lesson_value_up'}:
                     # Blue scenery around a grey diamond can raise mean
                     # saturation. Require the active diamond's vivid blue.
                     hsv = cv2.cvtColor(icon, cv2.COLOR_BGR2HSV)

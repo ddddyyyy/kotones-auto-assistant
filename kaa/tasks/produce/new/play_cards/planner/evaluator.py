@@ -649,6 +649,10 @@ class EffectHeuristicEvaluator:
     @staticmethod
     def _output_multiplier_known(state: BattleState) -> bool:
         """Do not certify output from stale or invalidated search multipliers."""
+        # This visible percentage is not calibrated with other multipliers
+        # or game rounding. Presence preserves ranking, but proves no output.
+        if 'lesson_value_up' in state.observed_effects:
+            return False
         pride = EffectHeuristicEvaluator._pride_active(state)
         if pride is None:
             return False

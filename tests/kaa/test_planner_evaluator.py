@@ -1691,3 +1691,24 @@ def test_pride_grant_without_duration_does_not_certify_followup():
     after = simulate_play(state,card)
     assert dict(after.projected_effect_values)['pride'] is None
     assert not EffectHeuristicEvaluator._output_multiplier_known(after)
+
+
+@pytest.mark.parametrize('pride', [False, True])
+@pytest.mark.parametrize('exam', [False, True])
+def test_unmodeled_visible_percentage_does_not_certify_output(pride, exam):
+    from dataclasses import replace
+    state = BattleState(remaining_turns=3, hp=20, genki=87,
+        is_exam=exam, exam_score_percent=1091 if exam else None,
+        buffs=ExamBuffState(aggressive=26, review=9),
+        observed_effects=frozenset({'pride'} if pride else set()),
+        observed_effect_values=(('aggressive',26),('review',9)))
+    visible = replace(state, observed_effects=state.observed_effects | {'lesson_value_up'})
+    card = _card('conversion', _effect(ProduceExamEffectType.ExamLessonDependBlock,1000))
+    evaluator = EffectHeuristicEvaluator()
+    baseline = evaluator.evaluate(cast(Any,card),state)
+    result = evaluator.evaluate(cast(Any,card),visible)
+    assert baseline.confirmed_output > 0
+    assert result.confirmed_output == 0
+    assert result.projected_output == baseline.projected_output
+    assert not evaluator._output_multiplier_known(replace(visible,
+        projected_effect_values=(('aggressive',26),('review',9))))
