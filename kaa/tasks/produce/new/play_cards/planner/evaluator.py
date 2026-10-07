@@ -446,6 +446,28 @@ class EffectHeuristicEvaluator:
             elif kind == ProduceExamEffectType.ExamLessonDependBlock:
                 output_inputs_known &= effect_state.genki_known
                 output = effect_state.genki * value / 1000.0 * output_multiplier
+                if (
+                    output_inputs_known
+                    and trigger_verdict == TriggerVerdict.ACTIVE
+                    and effect_state.is_exam
+                    and effect_state.exam_score_percent is not None
+                    and effect_state.exam_score_percent >= 0
+                    and effect_state.genki >= 0
+                    and value == base_value == 3200
+                    and value2 == 1000
+                    and count == base_count == 1
+                    and self._pride_active(effect_state) is False
+                    and effect_state.buffs.parameter_buff_turns == 0
+                    and effect_state.buffs.parameter_buff_multiple_turns == 0
+                    and not effect_state.anomaly.full_power_active
+                    and effect_state.anomaly.stance.value == 'normal'
+                ):
+                    # The observed 320% full conversion rounds parameters
+                    # before the exam percentage (193 genki -> 10,358).
+                    # Integer ceilings avoid floating-point boundary drift.
+                    parameter = (effect_state.genki * 3200 + 999) // 1000
+                    output = float((parameter * effect_state.exam_score_percent + 99) // 100)
+                    reasons.append('已校准320%元气转换分段进位')
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('元气依赖参数')

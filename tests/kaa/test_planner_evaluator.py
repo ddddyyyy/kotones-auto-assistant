@@ -1775,3 +1775,38 @@ def test_consumption_cost_retains_existing_low_hp_survival_priority():
         )), state) for ratio in (0, 1000)]
         return results[0].score - results[1].score
     assert loss(4) > loss(20) > 0
+
+
+@pytest.mark.parametrize('genki,percent,expected', [(45, 1676, 2414), (193, 1676, 10358), (0, 1676, 0), (193, 0, 0)])
+def test_calibrated_full_genki_conversion_rounds_parameter_before_exam(genki, percent, expected):
+    card = _card('full', _effect(ProduceExamEffectType.ExamLessonDependBlock, 3200, value2=1000))
+    state = BattleState(remaining_turns=6, hp=17, genki=genki, is_exam=True, exam_score_percent=percent)
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card), state)
+    assert result.projected_output == result.confirmed_output == expected
+    assert '分段进位' in result.reason
+
+
+@pytest.mark.parametrize('boundary', ['unknown_genki', 'missing_percent', 'lesson', 'half', 'other_ratio', 'repeat', 'pride', 'arrow', 'good_condition', 'full_power', 'stance', 'unknown_trigger', 'growth'])
+def test_conversion_rounding_does_not_expand_beyond_calibrated_scope(monkeypatch, boundary):
+    from dataclasses import replace
+    state = BattleState(remaining_turns=6, hp=17, genki=193, is_exam=True, exam_score_percent=1676)
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 3200, value2=1000)
+    if boundary == 'unknown_genki': state = replace(state, genki_known=False)
+    elif boundary == 'missing_percent': state = replace(state, exam_score_percent=None)
+    elif boundary == 'lesson': state = replace(state, is_exam=False)
+    elif boundary == 'half': effect.produce_exam_effect.effect_value2 = 500
+    elif boundary == 'other_ratio': effect.produce_exam_effect.effect_value1 = 3000
+    elif boundary == 'repeat': effect.produce_exam_effect.effect_count = 2
+    elif boundary == 'pride': state = replace(state, observed_effects=frozenset({'pride'}))
+    elif boundary == 'arrow': state = replace(state, observed_effects=frozenset({'lesson_value_up'}))
+    elif boundary == 'good_condition': state = replace(state, buffs=ExamBuffState(parameter_buff_turns=3))
+    elif boundary == 'full_power': state = replace(state, anomaly=AnomalyState(full_power_active=True))
+    elif boundary == 'stance': state = replace(state, anomaly=AnomalyState(stance=AnomalyStance.AGGRESSIVE))
+    elif boundary == 'unknown_trigger':
+        monkeypatch.setattr(evaluator_module, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    elif boundary == 'growth':
+        monkeypatch.setattr(evaluator_module, 'projected_growth_output', lambda _state, _card, _kind, value, count, **_: (value, count, False))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, _card('full', effect)), state)
+    assert '分段进位' not in result.reason
+    if boundary in {'unknown_genki', 'missing_percent', 'arrow', 'unknown_trigger', 'growth'}:
+        assert result.confirmed_output == 0
