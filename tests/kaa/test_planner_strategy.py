@@ -1243,3 +1243,27 @@ def test_search_keeps_free_or_hp_only_followup_after_consumption(red_cost):
     ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
     assert ranked[0][1].score == 100
     assert '两步预估后续 independent' in ranked[0][1].reason
+
+
+@pytest.mark.parametrize('status,stance', [
+    ('ConcentrationUp', AnomalyStance.AGGRESSIVE),
+    ('PreservationUp', AnomalyStance.PRESERVATION),
+    ('NoStance', AnomalyStance.NORMAL),
+])
+def test_search_does_not_bonus_free_followup_with_unknown_stance_condition(monkeypatch, status, stance):
+    from kaa.tasks.produce.new.play_cards.planner import strategy as strategy_module
+    from kaa.tasks.produce.new.play_cards.planner.trigger import ExamTrigger, evaluate_exam_trigger
+    setup = _planner_hand('setup')
+    finish = _planner_hand('finish')
+    finish.card._play_produce_exam_trigger_id = 'stance-gate'
+    gate = ExamTrigger(field_status_types=('ProduceExamFieldStatusType_' + status,))
+    monkeypatch.setattr(strategy_module, 'evaluate_trigger_id', lambda _id, state: evaluate_exam_trigger(gate, state))
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=2,
+                        projected_stance_uncertain=True,
+                        anomaly=AnomalyState(stance=stance),
+                        confirmed_absent_effects=frozenset({'concentration', 'preservation'}))
+    strategy = PlannerStrategy(FakeEvaluator({'setup': 10, 'finish': 100}))
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in (setup, finish)]
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[0][1].score == 10
+    assert '两步预估后续' not in ranked[0][1].reason

@@ -322,6 +322,14 @@ class EffectHeuristicEvaluator:
                 reasons.append('成长参数预测')
             output_multiplier = self._output_multiplier(effect_state)
             output_inputs_known &= self._output_multiplier_known(effect_state)
+            if effect_state.projected_stance_uncertain and kind in self._DIRECT | {
+                ProduceExamEffectType.ExamLessonFullPowerPoint,
+                ProduceExamEffectType.ExamMultipleLessonBuffLesson,
+                ProduceExamEffectType.ExamMultipleEnthusiasticLesson,
+            }:
+                # Full power fixes the multiplier, not the enthusiasm gained
+                # by possibly leaving preservation earlier in the sequence.
+                output_inputs_known = False
 
             def trusted_balance(name: str, modeled: int) -> bool:
                 value_read = dict(effect_state.effect_values_for_planning).get(name)

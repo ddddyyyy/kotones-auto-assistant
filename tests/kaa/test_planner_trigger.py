@@ -421,3 +421,19 @@ def test_repaired_condition_is_reloaded_after_database_cache_clear(monkeypatch):
         assert trigger.evaluate_trigger_id('repair', state) == TriggerVerdict.ACTIVE
     finally:
         trigger.load_exam_trigger.cache_clear()
+
+
+@pytest.mark.parametrize('status,stance', [
+    ('ConcentrationUp', AnomalyStance.AGGRESSIVE),
+    ('PreservationUp', AnomalyStance.PRESERVATION),
+    ('NoStance', AnomalyStance.NORMAL),
+])
+@pytest.mark.parametrize('negated', [False, True])
+@pytest.mark.parametrize('full_power', [False, True])
+def test_unknown_projected_stance_ignores_old_stance_and_hud(status, stance, negated, full_power):
+    state = BattleState(remaining_turns=4, hp=20, genki=20,
+                        anomaly=AnomalyState(stance=stance, full_power_active=full_power),
+                        observed_effects=frozenset({'concentration', 'preservation'}),
+                        confirmed_absent_effects=frozenset({'concentration', 'preservation'}),
+                        projected_effect_values=(), projected_stance_uncertain=True)
+    assert evaluate_exam_trigger(_trigger('ProduceExamFieldStatusType_' + status, negated=negated), state) == TriggerVerdict.UNKNOWN

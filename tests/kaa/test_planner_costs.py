@@ -542,4 +542,22 @@ def test_full_power_output_and_cost_bypass_uncertain_stance_estimate():
                         anomaly=AnomalyState(full_power_active=True))
     assert can_afford_play(state, card(stamina=2)) is True
     result = EffectHeuristicEvaluator().evaluate(resource_effect_card('ExamLesson', 10), state)
-    assert result.projected_output == result.confirmed_output == 30
+    assert result.projected_output == 30 and result.confirmed_output == 0
+    conversion = resource_effect_card('ExamLessonDependBlock', 1000)
+    independent = EffectHeuristicEvaluator().evaluate(conversion, state)
+    assert independent.projected_output == independent.confirmed_output == 60
+
+
+@pytest.mark.parametrize('kind,value,expected', [
+    ('ExamLesson', 10, 45),
+    ('ExamLessonFix', 10, 45),
+    ('ExamLessonFullPowerPoint', 10, 45),
+    ('ExamMultipleLessonBuffLesson', 10, 45),
+    ('ExamMultipleEnthusiasticLesson', 1000, 15),
+])
+def test_full_power_does_not_certify_enthusiasm_after_unknown_stance_history(kind, value, expected):
+    state = BattleState(remaining_turns=4, hp=20, genki=20, projected_stance_uncertain=True,
+                        anomaly=AnomalyState(full_power_active=True, enthusiasm=5))
+    result = EffectHeuristicEvaluator().evaluate(resource_effect_card(kind, value), state)
+    assert result.projected_output == expected
+    assert result.confirmed_output == 0

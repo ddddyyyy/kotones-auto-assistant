@@ -139,6 +139,13 @@ def _evaluate_field_status(
     if status_type == 'ProduceExamFieldStatusType_FullPowerPointGetSumUp':
         # Inferred cumulative gains have no complete observation ledger yet.
         return None
+    if state.projected_stance_uncertain and status_type in {
+        'ProduceExamFieldStatusType_ConcentrationUp',
+        'ProduceExamFieldStatusType_PreservationUp',
+        'ProduceExamFieldStatusType_NoStance',
+    }:
+        # A possible switch invalidates both the old stance and old HUD icons.
+        return None
     threshold = value if value > 0 else 1
     buffs = state.buffs
     anomaly = state.anomaly
