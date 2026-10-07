@@ -8,7 +8,7 @@ from kotonebot import logging
 from kotonebot.primitives import Rect
 
 from kaa.tasks import R
-from kotonebot.backend.image import find_all
+from kotonebot.backend.image import find_all, find as find_template
 from kaa.db.skill_card import SkillCard
 from kaa.game_ui.skill_card_select import match_card_region
 
@@ -41,6 +41,25 @@ def find_restored_move_option(
         and abs(option.letter_rect.center.y - target.letter_rect.center.y) < 25
     ]
     return matches[0] if len(matches) == 1 else None
+
+
+def is_move_confirmation_visible(screen: MatLike) -> bool:
+    """A recognized overlay blocks interaction even before its button settles."""
+    title = R.InProduce.DialogSkillCardMoveConfirm.Title
+    return find_template(screen, title.template, rect=title.region, threshold=0.9) is not None
+
+
+def find_move_confirmation(screen: MatLike) -> Rect | None:
+    """Recognize an underfilled hold selection before inspecting covered cards."""
+    prompt = R.InProduce.DialogSkillCardMoveConfirm
+    for part in (prompt.Title, prompt.Message):
+        if find_template(screen, part.template, rect=part.region, threshold=0.9) is None:
+            return None
+    button = find_template(
+        screen, prompt.ButtonConfirm.template,
+        rect=prompt.ButtonConfirm.region, threshold=0.9,
+    )
+    return button.rect if button is not None else None
 
 
 def _has_upgrade_marker(screen: MatLike, letter: Rect) -> bool:

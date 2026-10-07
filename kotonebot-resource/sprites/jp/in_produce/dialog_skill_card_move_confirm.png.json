@@ -1,0 +1,71 @@
+{
+  "version": 3,
+  "definitions": {
+    "0fef2021-61dc-4735-b18d-e521c8f90b9d": {
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "name": "InProduce.DialogSkillCardMoveConfirm.Title",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 59,
+          "y1": 804,
+          "x2": 511,
+          "y2": 843
+        },
+        "fixed": false,
+        "region": {
+          "kind": "rect",
+          "x1": 25,
+          "y1": 760,
+          "x2": 695,
+          "y2": 870
+        }
+      }
+    },
+    "beb50001-7552-4e7b-9230-f19cb33da37b": {
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "name": "InProduce.DialogSkillCardMoveConfirm.Message",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 61,
+          "y1": 886,
+          "x2": 540,
+          "y2": 949
+        },
+        "fixed": false,
+        "region": {
+          "kind": "rect",
+          "x1": 25,
+          "y1": 845,
+          "x2": 695,
+          "y2": 985
+        }
+      }
+    },
+    "2fa888ab-38de-464f-8f16-f2cd62cf4b77": {
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "name": "InProduce.DialogSkillCardMoveConfirm.ButtonConfirm",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 440,
+          "y1": 1143,
+          "x2": 559,
+          "y2": 1177
+        },
+        "fixed": false,
+        "region": {
+          "kind": "rect",
+          "x1": 370,
+          "y1": 1100,
+          "x2": 640,
+          "y2": 1220
+        }
+      }
+    }
+  }
+}

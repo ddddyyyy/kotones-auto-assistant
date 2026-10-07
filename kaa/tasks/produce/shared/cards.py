@@ -15,6 +15,8 @@ from kaa.tasks.produce.new.play_cards.strategy import AbstractBattleStrategy
 from kaa.tasks.produce.new.play_cards.move_selection import (
     MoveCardOption,
     find_restored_move_option,
+    find_move_confirmation,
+    is_move_confirmation_visible,
     observe_move_scrollbar,
     observe_move_cards,
 )
@@ -647,7 +649,8 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
         logger.warning('Top hold card was not visible after scrolling; using current best.')
         return next(iter(_order_move_options(current, battle_strategy)), None)
 
-    if not find_options():
+    screen = device.screenshot()
+    if not is_move_confirmation_visible(screen) and not observe_move_cards(screen):
         logger.info("No skill cards found")
         return False
 
@@ -663,6 +666,14 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
         # 没有，要继续选择并确定
         else:
             cd.reset()
+            screen = device.screenshot()
+            if is_move_confirmation_visible(screen):
+                confirmation = find_move_confirmation(screen)
+                if confirmation is not None:
+                    logger.info('Confirming the current hold selection before scanning cards.')
+                    device.click(confirmation)
+                sleep(0.2)
+                continue
             try:
                 option = choose_option()
             except Exception:
