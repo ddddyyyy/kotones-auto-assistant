@@ -94,6 +94,15 @@ def observe_move_scrollbar(screen: MatLike) -> MoveScrollbar | None:
         & (abs(blue - green) <= 3)
         & (abs(green - red) <= 12)
     )
+    # A warm stage can tint the translucent unfilled track brown. Its
+    # blue channel stays dark while green/red increase in order; the light
+    # thumb still has to satisfy the same narrow color and run-length checks.
+    warm_background = (
+        (blue >= 40) & (blue < 140)
+        & (green - blue >= 0) & (green - blue <= 30)
+        & (red - green >= 0) & (red - green <= 32)
+    )
+    background |= warm_background
     if int((thumb | background).sum()) < len(column) * 0.9 or int(background.sum()) < 15:
         return None
     best_start = best_length = 0
