@@ -612,3 +612,101 @@ def test_unknown_switch_before_known_exit_in_same_card_does_not_grant_play(monke
     future = simulate_play(state, first)
     assert future.projected_stance_uncertain
     assert future.playable_count == 0
+
+
+@pytest.mark.parametrize('switch', ['ExamConcentration', 'ExamPreservation', 'ExamStanceReset'])
+@pytest.mark.parametrize('blocker', ['StanceLock', 'ExamFullPower'])
+@pytest.mark.parametrize('block_first', [False, True])
+def test_known_stance_blocker_only_blocks_later_unknown_switch(monkeypatch, switch, blocker, block_first):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    def verdict(trigger_id, _state):
+        return TriggerVerdict.UNKNOWN if trigger_id == 'maybe' else TriggerVerdict.ACTIVE
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', verdict)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', verdict)
+    switch_card = resource_effect_card(switch, 1)
+    switch_card.play_effects[0]._produce_exam_trigger_id = 'maybe'
+    block = resource_effect_card(blocker, 1)
+    block.play_effects = (block.play_effects + switch_card.play_effects if block_first
+                         else switch_card.play_effects + block.play_effects)
+    state = BattleState(remaining_turns=4, hp=20, genki=20)
+    future = simulate_play(state, block)
+    assert future.projected_stance_uncertain is not block_first
+    if blocker == 'StanceLock':
+        assert future.anomaly.stance_locked
+    else:
+        assert future.anomaly.full_power_active
+
+
+@pytest.mark.parametrize('blocker', ['StanceLock', 'ExamFullPower'])
+@pytest.mark.parametrize('verdict_name', ['inactive', 'unknown'])
+def test_unconfirmed_blocker_does_not_hide_later_unknown_switch(monkeypatch, blocker, verdict_name):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    def verdict(trigger_id, _state):
+        return TriggerVerdict(verdict_name) if trigger_id == 'block' else TriggerVerdict.UNKNOWN
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', verdict)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', verdict)
+    block = resource_effect_card(blocker, 1)
+    block.play_effects[0]._produce_exam_trigger_id = 'block'
+    block.play_effects += resource_effect_card('ExamConcentration', 1).play_effects
+    future = simulate_play(BattleState(remaining_turns=4, hp=20, genki=20), block)
+    assert future.projected_stance_uncertain
+
+
+@pytest.mark.parametrize('blocker', ['StanceLock', 'ExamFullPower'])
+def test_known_blocker_does_not_restore_prior_unknown_stance_history(blocker):
+    state = BattleState(remaining_turns=4, hp=20, genki=20, projected_stance_uncertain=True)
+    future = simulate_play(state, resource_effect_card(blocker, 1))
+    assert future.projected_stance_uncertain
+
+
+@pytest.mark.parametrize('switch', ['ExamConcentration', 'ExamStanceReset'])
+@pytest.mark.parametrize('same_card', [False, True])
+def test_possible_stance_lock_invalidates_a_later_confirmed_switch(monkeypatch, switch, same_card):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    def verdict(trigger_id, _state):
+        return TriggerVerdict.UNKNOWN if trigger_id == 'maybe-lock' else TriggerVerdict.ACTIVE
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', verdict)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', verdict)
+    lock = resource_effect_card('StanceLock', 1)
+    lock.play_effects[0]._produce_exam_trigger_id = 'maybe-lock'
+    switch_card = resource_effect_card(switch, 1)
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=2,
+                        anomaly=AnomalyState(stance=AnomalyStance.PRESERVATION))
+    if same_card:
+        lock.play_effects += switch_card.play_effects
+        future = simulate_play(state, lock)
+        assert future.playable_count == 1
+    else:
+        after_lock = simulate_play(state, lock)
+        assert after_lock.projected_stance_lock_uncertain
+        assert not after_lock.projected_stance_uncertain
+        assert can_afford_play(after_lock, card(stamina=2)) is True
+        future = simulate_play(after_lock, switch_card)
+        assert future.playable_count == 0
+    assert future.projected_stance_uncertain
+    assert future.projected_stance_lock_uncertain
+    assert can_afford_play(future, card(stamina=2)) is None
+
+
+def test_confirmed_lock_resolves_possible_lock_without_changing_stance_certainty():
+    state = BattleState(remaining_turns=4, hp=20, genki=20, projected_stance_lock_uncertain=True)
+    future = simulate_play(state, resource_effect_card('StanceLock', 1))
+    assert future.anomaly.stance_locked
+    assert not future.projected_stance_lock_uncertain
+    assert not future.projected_stance_uncertain
+    after_switch = simulate_play(future, resource_effect_card('ExamPreservation', 1))
+    assert not after_switch.projected_stance_uncertain
+    assert can_afford_play(after_switch, card(stamina=1)) is True
+
+
+def test_existing_confirmed_lock_ignores_another_unknown_lock(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    state = BattleState(remaining_turns=4, hp=20, genki=20, anomaly=AnomalyState(stance_locked=True))
+    future = simulate_play(state, resource_effect_card('StanceLock', 1))
+    assert not future.projected_stance_lock_uncertain
+    assert not future.projected_stance_uncertain

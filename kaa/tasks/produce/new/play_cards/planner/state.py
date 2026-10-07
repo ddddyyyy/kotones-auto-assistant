@@ -131,6 +131,13 @@ class BattleState:
     with no trusted numeric balances. Raw observed_effect_values stay intact.
     """
 
+    projected_stance_lock_uncertain: bool = False
+    """A possible search-only lock; the current stance remains known until a switch.
+
+    A later confirmed lock resolves this marker, without resolving earlier
+    uncertainty about stance changes. Fresh HUD states do not inherit it.
+    """
+
     projected_stance_uncertain: bool = False
     """A possible conditional stance change in search, never a HUD reading.
 
