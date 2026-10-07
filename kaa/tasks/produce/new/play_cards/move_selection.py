@@ -108,7 +108,13 @@ def observe_move_scrollbar(screen: MatLike) -> MoveScrollbar | None:
         & (green - blue >= 0) & (green - blue <= 30)
         & (red - green > 32) & (red - green <= 64)
     )
-    background |= warm_background | orange_background
+    # After dragging, the exposed stage can tint the track yellow instead.
+    yellow_background = (
+        (blue >= 40) & (blue <= 80)
+        & (green - blue > 30) & (green - blue <= 75)
+        & (red - green >= 0) & (red - green <= 32)
+    )
+    background |= warm_background | orange_background | yellow_background
     if int((thumb | background).sum()) < len(column) * 0.9 or int(background.sum()) < 15:
         return None
     best_start = best_length = 0
