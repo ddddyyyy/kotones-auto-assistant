@@ -70,10 +70,9 @@ def _own_exam_score_box(screen: MatLike) -> Rect | None:
     if len(pairs) != 1:
         return None
     left, right = pairs[0]
-    # Exclude the selection frame and the gauge below the score. Five-digit
-    # scores can spill outside the narrow opponent tile; the leader crop is
-    # slightly wider for that reason.
-    return Rect(left + 4, 125, min(screen.shape[1] - left - 4, right - left - 5), 40)
+    # Exclude the gauge below the score, but keep digits that extend past the
+    # selection frame. The score mask removes the thin frame remnants.
+    return Rect(left + 4, 125, min(screen.shape[1] - left - 4, right - left + 4), 40)
 
 
 def _exam_score_variants(screen: MatLike, box: Rect) -> list[MatLike]:
