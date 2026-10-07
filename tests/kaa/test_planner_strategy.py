@@ -1193,3 +1193,53 @@ def test_followup_usage_condition_rechecks_special_resource_after_payment(monkey
     ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
     assert ranked[0][1].score == 10
     assert state.buffs.review == 5
+
+
+def _conversion_hand(card_id, ratio):
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 3200)
+    effect.produce_exam_effect.effect_value2 = ratio
+    hand = _planner_hand(card_id, effect)
+    hand.card.plan_type = None
+    hand.card.evaluation = 0
+    return hand
+
+
+def test_two_step_conversion_orders_preserving_output_before_full_consumption():
+    from kaa.tasks.produce.new.play_cards.planner.evaluator import EffectHeuristicEvaluator
+    evaluator = EffectHeuristicEvaluator()
+    spend = _conversion_hand('spend', 1000)
+    keep = _conversion_hand('keep', 0)
+    keep.card.play_effects[0].produce_exam_effect.effect_value1 = 1000
+    state = BattleState(remaining_turns=4, hp=20, genki=45,
+                        playable_count=2, is_exam=True, exam_score_percent=100)
+    strategy = PlannerStrategy(evaluator)
+    candidates = [(hand, evaluator.evaluate(hand.card, state)) for hand in (spend, keep)]
+    assert candidates[0][1].score > candidates[1][1].score
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[1][1].score > ranked[0][1].score
+    assert '两步预估后续 spend' in ranked[1][1].reason
+    assert state.genki == 45 and state.genki_known
+
+
+@pytest.mark.parametrize('ratio', [500, 1000])
+def test_search_does_not_bonus_green_followup_using_consumed_unknown_genki(ratio):
+    first = _conversion_hand('conversion', ratio)
+    paid = _planner_hand('paid', stamina=30)
+    state = BattleState(remaining_turns=4, hp=0, genki=45, playable_count=2)
+    strategy = PlannerStrategy(FakeEvaluator({'conversion': 10, 'paid': 100}))
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in (first, paid)]
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[0][1].score == 10
+    assert '两步预估后续' not in ranked[0][1].reason
+
+
+@pytest.mark.parametrize('red_cost', [0, 3])
+def test_search_keeps_free_or_hp_only_followup_after_consumption(red_cost):
+    first = _conversion_hand('conversion', 1000)
+    independent = _planner_hand('independent', force_stamina=red_cost)
+    state = BattleState(remaining_turns=4, hp=10, genki=45, playable_count=2)
+    strategy = PlannerStrategy(FakeEvaluator({'conversion': 10, 'independent': 100}))
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in (first, independent)]
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[0][1].score == 100
+    assert '两步预估后续 independent' in ranked[0][1].reason
