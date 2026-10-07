@@ -1267,3 +1267,16 @@ def test_search_does_not_bonus_free_followup_with_unknown_stance_condition(monke
     ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
     assert ranked[0][1].score == 10
     assert '两步预估后续' not in ranked[0][1].reason
+
+
+def test_search_does_not_bonus_followup_from_unknown_preservation_exit():
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamConcentration, 1))
+    finish = _planner_hand('finish')
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        projected_stance_uncertain=True,
+                        anomaly=AnomalyState(stance=AnomalyStance.PRESERVATION))
+    strategy = PlannerStrategy(FakeEvaluator({'setup': 10, 'finish': 100}))
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in (setup, finish)]
+    ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert ranked[0][1].score == 10
+    assert '两步预估后续' not in ranked[0][1].reason

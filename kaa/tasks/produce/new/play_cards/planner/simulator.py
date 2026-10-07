@@ -330,6 +330,21 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             if recovery and 'hp_recovery' in restrictions:
                 hp_known = False
 
+    if stance_uncertain:
+        # Leaving modeled preservation may grant a play that the unknown
+        # actual stance would not grant. Count only independent additions;
+        # retain the original anomaly as an estimate for ranking/history.
+        opportunity_memory = BattleMemory(
+            anomaly=replace(state.anomaly, stance_locked=True), buffs=state.buffs,
+        )
+        opportunity_memory.record_play(
+            resource_card, replace(state, projected_stance_uncertain=True),
+        )
+        added_plays = (
+            opportunity_memory.anomaly.extra_play_count
+            - state.anomaly.extra_play_count
+        )
+
     projected_values = dict(state.effect_values_for_planning)
     if pride is not False or 'pride' in projected_values:
         projected_values['pride'] = None if pride is None else int(pride)

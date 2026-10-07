@@ -561,3 +561,54 @@ def test_full_power_does_not_certify_enthusiasm_after_unknown_stance_history(kin
     result = EffectHeuristicEvaluator().evaluate(resource_effect_card(kind, value), state)
     assert result.projected_output == expected
     assert result.confirmed_output == 0
+
+
+@pytest.mark.parametrize('kind', ['ExamConcentration', 'ExamStanceReset'])
+@pytest.mark.parametrize('stance', [AnomalyStance.PRESERVATION, AnomalyStance.PRESERVATION_2])
+def test_unknown_preservation_history_does_not_grant_a_search_play(kind, stance):
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        projected_stance_uncertain=True, anomaly=AnomalyState(stance=stance))
+    future = simulate_play(state, resource_effect_card(kind, 1))
+    assert future.anomaly.extra_play_count == state.anomaly.extra_play_count + 1
+    assert future.playable_count == 0
+    assert state.playable_count == 1
+
+
+@pytest.mark.parametrize('kind,expected', [('ExamPlayableValueAdd', 2), ('ExamFullPower', 1)])
+def test_unknown_stance_preserves_independent_added_search_plays(kind, expected):
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        projected_stance_uncertain=True, anomaly=AnomalyState(stance=AnomalyStance.PRESERVATION))
+    grant = resource_effect_card(kind, 2)
+    switch = resource_effect_card('ExamConcentration', 1)
+    grant.play_effects = switch.play_effects + grant.play_effects
+    future = simulate_play(state, grant)
+    assert future.playable_count == expected
+
+
+def test_known_preservation_exit_keeps_search_play():
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        anomaly=AnomalyState(stance=AnomalyStance.PRESERVATION))
+    assert simulate_play(state, resource_effect_card('ExamConcentration', 1)).playable_count == 1
+
+
+def test_unknown_stance_does_not_create_a_second_full_power_entry_play():
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        projected_stance_uncertain=True, anomaly=AnomalyState(full_power_active=True))
+    assert simulate_play(state, resource_effect_card('ExamFullPower', 1)).playable_count == 0
+
+
+def test_unknown_switch_before_known_exit_in_same_card_does_not_grant_play(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    def verdict(trigger_id, _state):
+        return TriggerVerdict.UNKNOWN if trigger_id == 'maybe' else TriggerVerdict.ACTIVE
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', verdict)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', verdict)
+    first = resource_effect_card('ExamPreservation', 1)
+    first.play_effects[0]._produce_exam_trigger_id = 'maybe'
+    first.play_effects += resource_effect_card('ExamConcentration', 1).play_effects
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        anomaly=AnomalyState(stance=AnomalyStance.PRESERVATION))
+    future = simulate_play(state, first)
+    assert future.projected_stance_uncertain
+    assert future.playable_count == 0
