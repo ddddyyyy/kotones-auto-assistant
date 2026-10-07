@@ -107,6 +107,8 @@ def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
     green, red, growth_known = projected_growth_payment(state, card)
     if not growth_known:
         return False
+    if (green or red) and state.projected_full_power_uncertain:
+        return False
     if (
         (green or red) and state.projected_stance_uncertain
         and not state.anomaly.full_power_active

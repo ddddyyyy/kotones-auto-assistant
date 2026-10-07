@@ -710,3 +710,62 @@ def test_existing_confirmed_lock_ignores_another_unknown_lock(monkeypatch):
     future = simulate_play(state, resource_effect_card('StanceLock', 1))
     assert not future.projected_stance_lock_uncertain
     assert not future.projected_stance_uncertain
+
+
+@pytest.mark.parametrize('stance', [AnomalyStance.NORMAL, AnomalyStance.PRESERVATION, AnomalyStance.AGGRESSIVE])
+def test_unknown_full_power_entry_invalidates_followup_proofs(monkeypatch, stance):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=2,
+                        anomaly=AnomalyState(stance=stance))
+    future = simulate_play(state, resource_effect_card('ExamFullPower', 1))
+    assert future.projected_full_power_uncertain and future.projected_stance_uncertain
+    assert not future.anomaly.full_power_active and future.playable_count == 1
+    assert can_afford_play(future, card(stamina=2)) is None
+    assert can_afford_play(future, card()) is True
+    assert EffectHeuristicEvaluator().evaluate(resource_effect_card('ExamLessonDependBlock', 1000), future).confirmed_output == 0
+
+
+def test_known_entry_resolves_possible_full_power_without_regranting_entry_play():
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        projected_full_power_uncertain=True, projected_stance_uncertain=True)
+    future = simulate_play(state, resource_effect_card('ExamFullPower', 1))
+    assert future.anomaly.full_power_active and not future.projected_full_power_uncertain
+    assert future.projected_stance_uncertain and future.playable_count == 0
+    assert can_afford_play(future, card(stamina=2)) is True
+    assert EffectHeuristicEvaluator().evaluate(resource_effect_card('ExamLessonDependBlock', 1000), future).confirmed_output == 60
+
+
+def test_direct_added_plays_survive_possible_prior_full_power_entry():
+    state = BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1,
+                        projected_full_power_uncertain=True, projected_stance_uncertain=True)
+    paid = resource_effect_card('ExamFullPower', 1)
+    paid.play_effects += resource_effect_card('ExamPlayableValueAdd', 2).play_effects
+    assert simulate_play(state, paid).playable_count == 2
+
+
+def test_same_card_unknown_then_known_full_power_keeps_single_entry_play(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import simulator, memory
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    def verdict(trigger_id, _state):
+        return TriggerVerdict.UNKNOWN if trigger_id == 'maybe' else TriggerVerdict.ACTIVE
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', verdict)
+    monkeypatch.setattr(memory, 'evaluate_trigger_id', verdict)
+    paid = resource_effect_card('ExamFullPower', 1)
+    paid.play_effects[0]._produce_exam_trigger_id = 'maybe'
+    paid.play_effects += resource_effect_card('ExamFullPower', 1).play_effects
+    future = simulate_play(BattleState(remaining_turns=4, hp=20, genki=20, playable_count=1), paid)
+    assert future.anomaly.full_power_active and not future.projected_full_power_uncertain
+    assert future.playable_count == 1
+
+
+def test_unknown_reentry_cannot_invalidate_existing_confirmed_full_power(monkeypatch):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    state = BattleState(remaining_turns=4, hp=20, genki=20, anomaly=AnomalyState(full_power_active=True))
+    future = simulate_play(state, resource_effect_card('ExamFullPower', 1))
+    assert not future.projected_full_power_uncertain and not future.projected_stance_uncertain
+    assert can_afford_play(future, card(stamina=1)) is True

@@ -139,7 +139,7 @@ def _evaluate_field_status(
     if status_type == 'ProduceExamFieldStatusType_FullPowerPointGetSumUp':
         # Inferred cumulative gains have no complete observation ledger yet.
         return None
-    if state.projected_stance_uncertain and status_type in {
+    if (state.projected_stance_uncertain or state.projected_full_power_uncertain) and status_type in {
         'ProduceExamFieldStatusType_ConcentrationUp',
         'ProduceExamFieldStatusType_PreservationUp',
         'ProduceExamFieldStatusType_NoStance',
@@ -222,6 +222,8 @@ def _evaluate_field_status(
     if status_type == 'ProduceExamFieldStatusType_NoBlock':
         return state.genki <= 0 if state.genki_known else None
     if status_type == 'ProduceExamFieldStatusType_FullPowerUp':
+        if state.projected_full_power_uncertain:
+            return None
         if anomaly.full_power_active or 'full_power' in state.observed_effects:
             return True
         return False if 'full_power' in state.confirmed_absent_effects else None

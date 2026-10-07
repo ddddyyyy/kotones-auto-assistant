@@ -437,3 +437,12 @@ def test_unknown_projected_stance_ignores_old_stance_and_hud(status, stance, neg
                         confirmed_absent_effects=frozenset({'concentration', 'preservation'}),
                         projected_effect_values=(), projected_stance_uncertain=True)
     assert evaluate_exam_trigger(_trigger('ProduceExamFieldStatusType_' + status, negated=negated), state) == TriggerVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize('negated', [False, True])
+@pytest.mark.parametrize('icon_present', [False, True])
+def test_possible_full_power_entry_overrides_old_presence_and_absence(negated, icon_present):
+    state = BattleState(remaining_turns=4, hp=20, genki=20, projected_full_power_uncertain=True,
+                        observed_effects=frozenset({'full_power'}) if icon_present else frozenset(),
+                        confirmed_absent_effects=frozenset() if icon_present else frozenset({'full_power'}))
+    assert evaluate_exam_trigger(_trigger('ProduceExamFieldStatusType_FullPowerUp', negated=negated), state) == TriggerVerdict.UNKNOWN

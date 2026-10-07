@@ -695,6 +695,8 @@ class EffectHeuristicEvaluator:
         # or game rounding. Presence preserves ranking, but proves no output.
         if 'lesson_value_up' in state.observed_effects:
             return False
+        if state.projected_full_power_uncertain:
+            return False
         if state.projected_stance_uncertain and not state.anomaly.full_power_active:
             return False
         pride = EffectHeuristicEvaluator._pride_active(state)

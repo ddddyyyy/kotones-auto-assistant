@@ -131,6 +131,13 @@ class BattleState:
     with no trusted numeric balances. Raw observed_effect_values stay intact.
     """
 
+    projected_full_power_uncertain: bool = False
+    """A possible same-turn full-power entry, never an observed active state.
+
+    Confirmed entry resolves current activity, but does not certify a new
+    entry reward when the prior search state may already have been active.
+    """
+
     projected_stance_lock_uncertain: bool = False
     """A possible search-only lock; the current stance remains known until a switch.
 

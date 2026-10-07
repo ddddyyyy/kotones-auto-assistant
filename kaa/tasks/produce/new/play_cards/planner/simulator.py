@@ -154,6 +154,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     stance_locked = state.anomaly.stance_locked
     lock_uncertain = state.projected_stance_lock_uncertain
     full_power_active = state.anomaly.full_power_active
+    full_power_uncertain = state.projected_full_power_uncertain
     hp = state.hp
     genki = state.genki
     green_cost, red_cost = play_cost(state, card)
@@ -218,7 +219,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         )
         if (
             (verdict == TriggerVerdict.UNKNOWN
-             or (verdict == TriggerVerdict.ACTIVE and lock_uncertain))
+             or (verdict == TriggerVerdict.ACTIVE and (lock_uncertain or full_power_uncertain)))
             and effect.effect_type in {
                 ProduceExamEffectType.ExamConcentration,
                 ProduceExamEffectType.ExamPreservation,
@@ -236,12 +237,20 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             and not stance_locked
         ):
             lock_uncertain = True
+        if (
+            verdict == TriggerVerdict.UNKNOWN
+            and effect.effect_type == ProduceExamEffectType.ExamFullPower
+            and not full_power_active
+        ):
+            full_power_uncertain = True
+            stance_uncertain = True
         if verdict == TriggerVerdict.ACTIVE:
             if effect.effect_type == ProduceExamEffectType.StanceLock:
                 stance_locked = True
                 lock_uncertain = False
             elif effect.effect_type == ProduceExamEffectType.ExamFullPower:
                 full_power_active = True
+                full_power_uncertain = False
         if (
             verdict != TriggerVerdict.INACTIVE
             and effect.effect_type == ProduceExamEffectType.ExamLessonValueMultipleDependReviewOrAggressive
@@ -346,12 +355,16 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             if recovery and 'hp_recovery' in restrictions:
                 hp_known = False
 
-    if stance_uncertain:
+    if stance_uncertain or state.projected_full_power_uncertain:
         # Leaving modeled preservation may grant a play that the unknown
         # actual stance would not grant. Count only independent additions;
         # retain the original anomaly as an estimate for ranking/history.
         opportunity_memory = BattleMemory(
-            anomaly=replace(state.anomaly, stance_locked=True), buffs=state.buffs,
+            anomaly=replace(
+                state.anomaly, stance_locked=True,
+                full_power_active=(state.anomaly.full_power_active
+                                   or state.projected_full_power_uncertain),
+            ), buffs=state.buffs,
         )
         opportunity_memory.record_play(
             resource_card, replace(state, projected_stance_uncertain=True),
@@ -417,6 +430,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         projected_stamina_consumption=modifier,
         projected_stance_uncertain=stance_uncertain,
         projected_stance_lock_uncertain=lock_uncertain,
+        projected_full_power_uncertain=full_power_uncertain,
         # Green payment spills into HP when genki is insufficient. An unknown
         # genki balance cannot establish exact remaining HP after that payment.
         hp_known=hp_known,
