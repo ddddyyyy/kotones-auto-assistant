@@ -251,6 +251,9 @@ class KaaDeviceFactory:
             return d
 
         elif isinstance(instance, (CustomInstance, Mumu12Instance, LeidianInstance)):
+            if isinstance(instance, Mumu12Instance) and isinstance(lc, MuMu12V5Device):
+                from .mumu_adb import resolve_mumu_adb_address
+                resolve_mumu_adb_address(instance)
             if impl_name == 'nemu_ipc' and isinstance(instance, Mumu12Instance):
                 assert isinstance(lc, MuMu12V5Device)
                 timeout = 180
