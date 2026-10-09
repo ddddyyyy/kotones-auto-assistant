@@ -1,10 +1,12 @@
 """Recognize the cards offered by an in-battle move-to-hold dialog."""
 
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
+import re
 
 from cv2.typing import MatLike
 from kotonebot import logging
+from kotonebot.backend.ocr import en
 from kotonebot.primitives import Rect
 
 from kaa.tasks import R
@@ -49,17 +51,69 @@ def is_move_confirmation_visible(screen: MatLike) -> bool:
     return find_template(screen, title.template, rect=title.region, threshold=0.9) is not None
 
 
-def find_move_confirmation(screen: MatLike) -> Rect | None:
-    """Recognize an underfilled hold selection before inspecting covered cards."""
+def _find_move_confirmation_button(screen: MatLike, *, cancel: bool) -> Rect | None:
     prompt = R.InProduce.DialogSkillCardMoveConfirm
     for part in (prompt.Title, prompt.Message):
         if find_template(screen, part.template, rect=part.region, threshold=0.9) is None:
             return None
-    button = find_template(
-        screen, prompt.ButtonConfirm.template,
-        rect=prompt.ButtonConfirm.region, threshold=0.9,
-    )
+    target = prompt.ButtonCancel if cancel else prompt.ButtonConfirm
+    button = find_template(screen, target.template, rect=target.region, threshold=0.9)
     return button.rect if button is not None else None
+
+
+def find_move_confirmation(screen: MatLike) -> Rect | None:
+    """Recognize the button for accepting an underfilled hold selection."""
+    return _find_move_confirmation_button(screen, cancel=False)
+
+
+def find_move_confirmation_cancel(screen: MatLike) -> Rect | None:
+    """Recognize the cancel button on an underfilled hold confirmation."""
+    return _find_move_confirmation_button(screen, cancel=True)
+
+
+@dataclass(frozen=True)
+class MoveSelectionCount:
+    selected: int
+    maximum: int
+
+
+def observe_move_selection_count(screen: MatLike) -> MoveSelectionCount | None:
+    """Read the hold counter in either observed button layout from one frame.
+
+    Both colour and white-text views of the same crop must agree. A missing or
+    conflicting reading stays unknown; callers must not infer a selected card
+    merely from a click or an underfilled confirmation prompt.
+    """
+    readings: list[MoveSelectionCount] = []
+    for box in (
+        R.InProduce.BoxSkillCardMoveButtonCount,
+        R.InProduce.BoxSkillCardMoveButtonCountShifted,
+    ):
+        if screen.shape[0] < box.y2 or screen.shape[1] < box.x2:
+            continue
+        crop = screen[box.y1:box.y2, box.x1:box.x2]
+        white = ((crop.min(axis=2) if crop.ndim == 3 else crop) > 200).astype('uint8') * 255
+        crop_readings: list[MoveSelectionCount] = []
+        try:
+            for image in (crop, white):
+                results = en().ocr(image)
+                if len(results) != 1 or results[0].confidence < 0.98:
+                    break
+                match = re.fullmatch(r'([0-9])/([0-9])', results[0].text.strip())
+                if match is None:
+                    break
+                selected, maximum = map(int, match.groups())
+                if not 0 <= selected <= maximum <= 9 or maximum == 0:
+                    break
+                crop_readings.append(MoveSelectionCount(selected, maximum))
+        except Exception:
+            logger.debug('Could not read the hold selection counter.', exc_info=True)
+            continue
+        if len(crop_readings) == 2:
+            if crop_readings[0] != crop_readings[1]:
+                return None
+            readings.append(crop_readings[0])
+    return readings[0] if readings and len(set(readings)) == 1 else None
 
 
 def _has_upgrade_marker(screen: MatLike, letter: Rect) -> bool:

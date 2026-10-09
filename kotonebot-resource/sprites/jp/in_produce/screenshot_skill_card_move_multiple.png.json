@@ -70,6 +70,20 @@
           "y2": 1045
         }
       }
+    },
+    "0bb8be1d-1473-4b8f-97d7-89cb0cff7287": {
+      "type": "hint-box",
+      "name": "InProduce.BoxSkillCardMoveButtonCountShifted",
+      "description": "技能卡移动双按钮布局的数量文本区域",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 475,
+          "y1": 1170,
+          "x2": 525,
+          "y2": 1195
+        }
+      }
     }
   }
 }
