@@ -22,3 +22,7 @@ class AbstractBattleStrategy(ABC):
     def rank_move_cards(self, cards: list['SkillCard | None']) -> list[int] | None:
         """Order cards for move-to-hold; None preserves the legacy fallback."""
         return None
+
+    def select_multiple_move_cards(self) -> bool:
+        """Whether the strategy may fill a verified multi-card hold dialog."""
+        return False

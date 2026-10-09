@@ -19,6 +19,7 @@ from kaa.tasks.produce.new.play_cards.move_selection import (
     is_move_confirmation_visible,
     observe_move_scrollbar,
     observe_move_cards,
+    observe_move_selection_count,
 )
 from kotonebot.primitives import RectTuple, Rect
 from kotonebot import action, Interval, Countdown, device, image, sleep, ocr, contains, use_screenshot, color
@@ -687,9 +688,64 @@ def handle_skill_card_move(battle_strategy: AbstractBattleStrategy | None = None
                 'Moving card to hold: %s',
                 option.card.name if option.card is not None else 'unrecognized',
             )
+            before = device.screenshot()
+            capacity = observe_move_selection_count(before)
+            before_scrollbar = observe_move_scrollbar(before)
+            may_select_second = (
+                battle_strategy is not None
+                and battle_strategy.select_multiple_move_cards()
+                and capacity is not None
+                and capacity.selected == 0
+                and capacity.maximum == 2
+                and option.card is not None
+            )
             device.double_click(option.letter_rect)
             sleep(1)
-            dialog.yes()
+            after_first = device.screenshot()
+            count = observe_move_selection_count(after_first) if may_select_second else None
+            if count is not None and count.selected == 1 and count.maximum == 2:
+                after_scrollbar = observe_move_scrollbar(after_first)
+                same_viewport = (
+                    (before_scrollbar is None and after_scrollbar is None)
+                    or (
+                        before_scrollbar is not None
+                        and after_scrollbar is not None
+                        and abs(before_scrollbar.position - after_scrollbar.position) < 0.02
+                    )
+                )
+                if same_viewport and not is_move_confirmation_visible(after_first):
+                    remaining = [
+                        candidate for candidate in observe_move_cards(after_first)
+                        if candidate.card is not None
+                        and (
+                            abs(candidate.letter_rect.center.x - option.letter_rect.center.x) >= 25
+                            or abs(candidate.letter_rect.center.y - option.letter_rect.center.y) >= 25
+                        )
+                    ]
+                    ranked = battle_strategy.rank_move_cards(
+                        [candidate.card for candidate in remaining]
+                    ) if battle_strategy is not None and remaining else None
+                    if ranked:
+                        second = next(
+                            (remaining[index] for index in ranked if 0 <= index < len(remaining)),
+                            None,
+                        )
+                        if second is not None:
+                            logger.info(
+                                'Selecting second hold card: %s',
+                                second.card.name if second.card is not None else 'unrecognized',
+                            )
+                            device.double_click(second.letter_rect)
+                            sleep(1)
+                            after_second = device.screenshot()
+                            verified = observe_move_selection_count(after_second)
+                            if verified is None or verified.selected != 2 or verified.maximum != 2:
+                                logger.warning('Second hold selection was not verified; using normal confirmation.')
+            elif may_select_second:
+                logger.info('Hold count did not confirm one selected card; keeping the legacy confirmation.')
+            final_screen = device.screenshot()
+            if not is_move_confirmation_visible(final_screen) and R.InProduce.IconTitleSkillCardMove.exists():
+                dialog.yes()
     logger.debug("Handle skill card move finished.")
     return True
 

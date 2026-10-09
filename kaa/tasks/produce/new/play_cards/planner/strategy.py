@@ -233,6 +233,10 @@ class PlannerStrategy(AbstractBattleStrategy):
         return True
 
     @override
+    def select_multiple_move_cards(self) -> bool:
+        return True
+
+    @override
     def rank_move_cards(self, cards: list['SkillCard | None']) -> list[int] | None:
         """Prefer cards valuable when hold returns them to the hand.
 
