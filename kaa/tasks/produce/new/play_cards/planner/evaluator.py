@@ -735,7 +735,7 @@ class EffectHeuristicEvaluator:
         """Do not certify output from stale or invalidated search multipliers."""
         # This visible percentage is not calibrated with other multipliers
         # or game rounding. Presence preserves ranking, but proves no output.
-        if 'lesson_value_up' in state.observed_effects:
+        if {'lesson_value_up', 'lesson_value_down'} & state.observed_effects:
             return False
         if state.projected_full_power_uncertain:
             return False

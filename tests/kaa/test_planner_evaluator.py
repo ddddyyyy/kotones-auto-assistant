@@ -2153,3 +2153,24 @@ def test_late_shield_discount_does_not_restore_unknown_post_payment_genki():
     )
     result = evaluator.evaluate(cast(Any, card), state)
     assert '余量递减' not in result.reason
+
+
+@pytest.mark.parametrize('kind', [ProduceExamEffectType.ExamLesson,
+                                  ProduceExamEffectType.ExamLessonDependBlock])
+@pytest.mark.parametrize('exam', [False, True])
+def test_visible_score_decrease_never_certifies_uncalibrated_output(kind, exam):
+    evaluator = EffectHeuristicEvaluator()
+    card = _card('output', _effect(kind, 9 if kind == ProduceExamEffectType.ExamLesson else 1000))
+    state = BattleState(remaining_turns=3, hp=20, genki=50,
+                        is_exam=exam, exam_score_percent=100 if exam else None)
+    reference = evaluator.evaluate(cast(Any, card), state)
+    decrease = replace(state, observed_effects=frozenset({'lesson_value_down'}),
+                       observed_effect_values=(('lesson_value_down', None),))
+    result = evaluator.evaluate(cast(Any, card), decrease)
+    assert result.projected_output == reference.projected_output
+    assert reference.confirmed_output > 0
+    assert result.confirmed_output == 0
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+
+    after = simulate_play(decrease, cast(Any, _card('setup')))
+    assert not evaluator._output_multiplier_known(after)
