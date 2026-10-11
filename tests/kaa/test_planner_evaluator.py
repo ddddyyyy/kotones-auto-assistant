@@ -1574,7 +1574,7 @@ def test_aggressive_genki_scores_base_and_bonus_with_defence_weight(base, bonus,
         buffs=ExamBuffState(aggressive=aggressive))
     scaled = _card('scaled', _effect(ProduceExamEffectType.ExamBlockAddMultipleAggressive,
         base, value2=bonus))
-    ordinary = _card('ordinary', _effect(ProduceExamEffectType.ExamBlock,
+    ordinary = _card('ordinary', _effect(ProduceExamEffectType.ExamBlockFix,
         cast(Any, base + aggressive * (1 + bonus / 1000))))
     actual = evaluator.evaluate(cast(Any, scaled), state)
     expected = evaluator.evaluate(cast(Any, ordinary), state)
@@ -1588,7 +1588,7 @@ def test_aggressive_genki_estimate_uses_prior_effects_only(gain_first):
     evaluator = EffectHeuristicEvaluator()
     gain = _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5)
     scaled = _effect(ProduceExamEffectType.ExamBlockAddMultipleAggressive, 2, value2=500)
-    block = _effect(ProduceExamEffectType.ExamBlock, cast(Any, 2 + (15 if gain_first else 10) * 1.5))
+    block = _effect(ProduceExamEffectType.ExamBlockFix, cast(Any, 2 + (15 if gain_first else 10) * 1.5))
     state = BattleState(remaining_turns=3, hp=20, genki=0,
         buffs=ExamBuffState(aggressive=10))
     a = _card('scaled', *( [gain, scaled] if gain_first else [scaled, gain] ))
@@ -1860,3 +1860,79 @@ def test_motivation_terminal_conversion_still_beats_unusable_setup(percent):
     setup = _card('motivation', _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5))
     evaluator = EffectHeuristicEvaluator()
     assert evaluator.evaluate(cast(Any, scorer), state).score > evaluator.evaluate(cast(Any, setup), state).score
+
+
+@pytest.mark.parametrize('gain_first', [True, False])
+def test_ordinary_genki_uses_only_motivation_before_its_effect(gain_first):
+    gain = _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5)
+    block = _effect(ProduceExamEffectType.ExamBlock, 2)
+    state = BattleState(remaining_turns=4, hp=20, genki=0,
+        buffs=ExamBuffState(aggressive=10), observed_effect_values=(('aggressive', 10),))
+    actual = _card('ordinary', *([gain, block] if gain_first else [block, gain]))
+    reference = _card('fixed', *([gain, _effect(ProduceExamEffectType.ExamBlockFix, 17)] if gain_first
+        else [_effect(ProduceExamEffectType.ExamBlockFix, 12), gain]))
+    evaluator = EffectHeuristicEvaluator()
+    assert evaluator.evaluate(cast(Any, actual), state).score == pytest.approx(
+        evaluator.evaluate(cast(Any, reference), state).score)
+
+
+@pytest.mark.parametrize('known', [True, False])
+def test_ordinary_genki_motivation_bonus_changes_followup_estimate_without_certifying_unknown(known):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    state = BattleState(remaining_turns=4, hp=20, genki=0,
+        buffs=ExamBuffState(aggressive=44),
+        observed_effect_values=(('aggressive', 44 if known else None),))
+    card = _card('extra', _effect(ProduceExamEffectType.ExamBlock, 1),
+        _effect(ProduceExamEffectType.ExamPlayableValueAdd, 1))
+    future = simulate_play(state, cast(Any, card))
+    assert future.genki == 45
+    assert future.genki_known is known
+    conversion = _card('conversion', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    output = EffectHeuristicEvaluator().evaluate(cast(Any, conversion), future)
+    assert output.projected_output == 45
+    assert output.confirmed_output == (45 if known else 0)
+    assert state.genki == 0
+
+
+@pytest.mark.parametrize('gain_first,expected', [(True, 17), (False, 12)])
+def test_ordinary_genki_simulation_orders_motivation_and_preserves_card(gain_first, expected):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    gain = _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5)
+    block = _effect(ProduceExamEffectType.ExamBlock, 2)
+    card = _card('ordered', *([gain, block] if gain_first else [block, gain]))
+    state = BattleState(remaining_turns=4, hp=20, genki=0,
+        buffs=ExamBuffState(aggressive=10), observed_effect_values=(('aggressive', 10),))
+    future = simulate_play(state, cast(Any, card))
+    assert future.genki == expected and future.genki_known
+    assert state.buffs.aggressive == 10 and block.produce_exam_effect.effect_value1 == 2
+
+
+@pytest.mark.parametrize('fixed,expected', [(False, 9), (True, 2)])
+def test_ordinary_genki_bonus_uses_motivation_after_special_payment_but_fixed_gain_does_not(fixed, expected):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    state = BattleState(remaining_turns=4, hp=20, genki=0,
+        buffs=ExamBuffState(aggressive=10), observed_effect_values=(('aggressive', 10),))
+    card = _card('paid', _effect(ProduceExamEffectType.ExamBlockFix if fixed else ProduceExamEffectType.ExamBlock, 2),
+        cost_type='ExamCostType_ExamCardPlayAggressive', cost_value=3)
+    result = simulate_play(state, cast(Any, card))
+    assert result.genki == expected and result.genki_known
+
+
+@pytest.mark.parametrize('marker', ['unknown_trigger', 'unknown_prediction', 'unknown_growth'])
+def test_ordinary_genki_never_restores_unknown_motivation_budget(monkeypatch, marker):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    state = BattleState(remaining_turns=4, hp=0, genki=0,
+        buffs=ExamBuffState(aggressive=10), observed_effect_values=(('aggressive', 10),))
+    grant = _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5)
+    grant._produce_exam_trigger_id = 'uncertain'
+    if marker == 'unknown_trigger':
+        monkeypatch.setattr(simulator, 'evaluate_trigger_id',
+            lambda key, _: TriggerVerdict.UNKNOWN if key == 'uncertain' else TriggerVerdict.ACTIVE)
+    elif marker == 'unknown_prediction':
+        state = replace(state, projected_effect_values=())
+    else:
+        state = replace(state, unresolved_growth_card_ids=frozenset({'uncertain-card'}))
+    card = _card('uncertain-card', grant, _effect(ProduceExamEffectType.ExamBlock, 2))
+    future = simulator.simulate_play(state, cast(Any, card))
+    assert not future.genki_known
+    assert simulator.can_afford_play(future, cast(Any, _card('followup', cost=5))) is None

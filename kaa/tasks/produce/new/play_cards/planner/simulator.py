@@ -80,6 +80,17 @@ _UNMODELED_HP_EFFECTS = {
 }
 
 
+def estimate_genki_gain(
+    kind: ProduceExamEffectType, base: float, aggressive: int, bonus: float = 0.0,
+) -> float:
+    """Ranking amount; callers separately preserve uncertain resource budgets."""
+    if kind == ProduceExamEffectType.ExamBlock:
+        return base + max(0, aggressive)
+    if kind == ProduceExamEffectType.ExamBlockAddMultipleAggressive:
+        return base + max(0, aggressive) * (1 + bonus / 1000.0)
+    return base
+
+
 def can_afford_play(state: BattleState, card: SkillCard) -> bool | None:
     """Prove affordability from the available HUD values, or return unknown."""
     special = special_cost_affordability(state, card)
@@ -157,6 +168,16 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     full_power_uncertain = state.projected_full_power_uncertain
     hp = state.hp
     genki = state.genki
+    aggressive = state.buffs.aggressive
+    aggressive_values = dict(state.effect_values_for_planning)
+    aggressive_known = aggressive_values.get('aggressive') == aggressive or (
+        aggressive == 0
+        and state.projected_effect_values is None
+        and 'aggressive' not in aggressive_values
+        and 'aggressive' not in state.observed_effects
+    )
+    if getattr(card, 'cost_type', None) == 'ExamCostType_ExamCardPlayAggressive':
+        aggressive = max(0, aggressive - max(0, getattr(card, 'cost_value', 0) or 0))
     green_cost, red_cost = play_cost(state, card)
     genki_spent = min(genki, green_cost)
     genki -= genki_spent
@@ -334,6 +355,19 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
                 modifier = 'unknown'
         value = max(0, effect.effect_value1 or 0)
         if effect.effect_type in {
+            ProduceExamEffectType.ExamCardPlayAggressive,
+            ProduceExamEffectType.ExamAggressiveReduce,
+        }:
+            aggressive_value, _, _ = projected_growth_output(
+                replace(state, projected_card_growth=tuple(growth)), card,
+                effect.effect_type, value, 1,
+                applied_count=len(state.projected_card_growth),
+            )
+            aggressive = max(0, aggressive + (
+                aggressive_value if effect.effect_type == ProduceExamEffectType.ExamCardPlayAggressive
+                else -aggressive_value
+            ))
+        if effect.effect_type in {
             ProduceExamEffectType.ExamBlock,
             ProduceExamEffectType.ExamBlockFix,
         }:
@@ -341,6 +375,9 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
                 replace(state, projected_card_growth=tuple(growth)), card,
                 effect.effect_type, value, 1, applied_count=len(state.projected_card_growth),
             )
+            if effect.effect_type == ProduceExamEffectType.ExamBlock:
+                block_value = estimate_genki_gain(effect.effect_type, block_value, int(aggressive))
+                genki_known &= aggressive_known and 'aggressive' not in uncertain_balances
             genki += int(block_value)
             genki_known &= growth_known
             if block_value and 'genki_gain' in restrictions:

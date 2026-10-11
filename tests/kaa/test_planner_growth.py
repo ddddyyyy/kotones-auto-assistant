@@ -267,7 +267,7 @@ def test_named_growth_and_cost_apply_only_to_matching_card_type(monkeypatch, can
 def test_block_growth_feeds_later_payment_without_changing_observation_or_card(monkeypatch):
     monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
         block_changes=(5,), output_known=True))
-    state = replace(_state(hp=1), observed_genki=0)
+    state = replace(_state(hp=1), observed_genki=0, projected_effect_values=(('aggressive', 0),))
     card = _card(green=0, effects=(_output(ProduceExamEffectType.ExamBlock, 3),))
     after = simulate_play(state, card)
     assert after.genki == 8 and after.genki_known and after.observed_genki == 0
@@ -283,7 +283,7 @@ def test_block_growth_changes_survival_score_and_same_card_conversion(monkeypatc
         _output(ProduceExamEffectType.ExamBlock, 3),
         _output(ProduceExamEffectType.ExamLessonDependBlock, 1000),
     ))
-    state = _state(hp=100)
+    state = replace(_state(hp=100), projected_effect_values=(('aggressive', 0),))
     grown = EffectHeuristicEvaluator().evaluate(card, state)
     base = EffectHeuristicEvaluator().evaluate(card, replace(state, projected_card_growth=()))
     assert grown.projected_output == grown.confirmed_output == 8
@@ -300,6 +300,7 @@ def test_uncertain_or_restricted_block_growth_cannot_prove_followup_payment(
     monkeypatch.setattr(costs, 'get_card_growth_rule', lambda key: _rule(
         block_changes=(5,), output_known=True))
     state = replace(_state(hp=1, growth=(('growth', active),)),
+        projected_effect_values=(('aggressive', 0),),
         projected_resource_restrictions=frozenset({'genki_gain'}) if restriction else frozenset())
     after = simulate_play(state, _card(green=0, effects=(_output(ProduceExamEffectType.ExamBlock, 3),)))
     assert after.genki_known is known

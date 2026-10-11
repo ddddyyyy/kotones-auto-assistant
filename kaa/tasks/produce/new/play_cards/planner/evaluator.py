@@ -20,7 +20,7 @@ from .state import BattleState
 from .visible_output import current_preview_output
 from .profiles import profile_for
 from .costs import play_cost, projected_growth_output
-from .simulator import simulate_play, simulate_play_prefix
+from .simulator import estimate_genki_gain, simulate_play, simulate_play_prefix
 from .trigger import TriggerVerdict, evaluate_trigger_id, load_exam_trigger
 
 
@@ -357,11 +357,11 @@ class EffectHeuristicEvaluator:
                 score += self._score_output(output, state) * late_weight
                 reasons.append('全力值依赖参数')
             elif kind in self._DEFENCE:
-                if kind == ProduceExamEffectType.ExamBlockAddMultipleAggressive:
-                    # DB value1 is base genki; value2 adds to the ordinary
-                    # aggressive multiplier. This remains a ranking estimate:
-                    # simulator keeps payment/conversion unknown until calibrated.
-                    value += effect_state.buffs.aggressive * (1 + value2 / 1000.0)
+                if kind in {
+                    ProduceExamEffectType.ExamBlock,
+                    ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+                }:
+                    value = estimate_genki_gain(kind, value, effect_state.buffs.aggressive, value2)
                     reasons.append('干劲依赖元气估算')
                 if (
                     kind in {
