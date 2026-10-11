@@ -1936,3 +1936,25 @@ def test_ordinary_genki_never_restores_unknown_motivation_budget(monkeypatch, ma
     future = simulator.simulate_play(state, cast(Any, card))
     assert not future.genki_known
     assert simulator.can_afford_play(future, cast(Any, _card('followup', cost=5))) is None
+
+
+@pytest.mark.parametrize('archetype,genki,extra,protected', [
+    (ProduceExamEffectType.ExamCardPlayAggressive, 84, False, True),
+    (ProduceExamEffectType.ExamCardPlayAggressive, 0, False, False),
+    (ProduceExamEffectType.ExamCardPlayAggressive, 84, True, False),
+    (ProduceExamEffectType.ExamReview, 84, False, False),
+])
+def test_exam_deadline_does_not_stack_surplus_motivation_instead_of_visible_output(archetype, genki, extra, protected):
+    from kaa.tasks.produce.new.play_cards.planner.strategy import PlannerStrategy
+    state = BattleState(remaining_turns=3, hp=20, genki=genki, is_exam=True,
+        exam_score_percent=402, archetype=archetype,
+        buffs=ExamBuffState(aggressive=12), observed_effect_values=(('aggressive', 12),))
+    effects = [_effect(ProduceExamEffectType.ExamBlock, 1),
+        _effect(ProduceExamEffectType.ExamCardPlayAggressive, 2)]
+    if extra: effects.append(_effect(ProduceExamEffectType.ExamPlayableValueAdd, 1))
+    setup = SimpleNamespace(card=_card('setup', *effects))
+    output = SimpleNamespace(card=_card('output', _effect(ProduceExamEffectType.ExamLesson, 6)))
+    candidates = [(setup, CardEvaluation('setup', 30, EvaluationConfidence.LOW, 'setup')),
+        (output, CardEvaluation('output', 6, EvaluationConfidence.LOW, 'output', projected_output=24.12, confirmed_output=24.12))]
+    result = PlannerStrategy()._protect_exam_finish(cast(Any, candidates), state)
+    assert (result[0][1].score < result[1][1].score) is protected
