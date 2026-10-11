@@ -387,7 +387,41 @@ class EffectHeuristicEvaluator:
                     # recovery is different: it can carry into later lessons.
                     reasons.append('终局元气无后续利用')
                     continue
-                score += value * genki_survival_value(state)
+                survival_weight = genki_survival_value(state)
+                if (
+                    kind in {
+                        ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
+                        ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+                    }
+                    and not state.is_exam
+                    and state.archetype == ProduceExamEffectType.ExamCardPlayAggressive
+                    and state.remaining_turns_known
+                    and turns <= 3
+                    and effect_state.genki_known
+                    and effect_state.genki > 10
+                    and state.hp_known
+                    and state.hp > 8
+                    and not grants_extra_turn
+                    and not has_followup_play()
+                    and not any(
+                        other.produce_exam_effect is not None
+                        and other.produce_exam_effect.effect_type in {
+                            ProduceExamEffectType.ExamLessonDependBlock,
+                            ProduceExamEffectType.ExamReviewDependExamBlock,
+                        }
+                        and evaluate_trigger_id(
+                            getattr(other, '_produce_exam_trigger_id', ''), effect_state
+                        ) != TriggerVerdict.INACTIVE
+                        for other in card.play_effects
+                    )
+                ):
+                    # Ten genki is the existing late-exam surplus reference.
+                    # Extra shields have diminishing survival value near the
+                    # lesson deadline; this does not price a future converter
+                    # or certify that unseen future costs will be payable.
+                    survival_weight *= 10.0 / effect_state.genki
+                    reasons.append('课程末段元气余量递减生存价值')
+                score += value * survival_weight
                 reasons.append('生存')
             elif kind in self._SETUP:
                 effective_value = value if value > 0 else max(1.0, float(duration))

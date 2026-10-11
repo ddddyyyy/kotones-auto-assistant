@@ -2062,3 +2062,94 @@ def test_conversion_preview_never_establishes_but_preserves_unchanged_model_proo
     result = evaluator.evaluate(card, replace(state, observed_card_output=('convert', preview, None)))
     assert result.projected_output == preview
     assert result.confirmed_output == confirmed
+
+
+@pytest.mark.parametrize('genki', [10, 20, 50, 100])
+def test_late_motivation_lesson_discounts_only_marginal_shield_value(genki):
+    evaluator = EffectHeuristicEvaluator()
+    shield = _card('shield', _effect(ProduceExamEffectType.ExamBlock, 8))
+    state = BattleState(
+        remaining_turns=3, hp=15, genki=genki,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+    )
+    base = evaluator.evaluate(cast(Any, shield), replace(state, genki=10))
+    result = evaluator.evaluate(cast(Any, shield), state)
+    assert result.score == pytest.approx(base.score * 10 / genki)
+    assert result.projected_output == result.confirmed_output == 0
+
+
+@pytest.mark.parametrize('override', [
+    {'is_exam': True}, {'remaining_turns': 4}, {'remaining_turns_known': False},
+    {'genki_known': False}, {'hp_known': False}, {'hp': 8},
+    {'archetype': ProduceExamEffectType.ExamReview}, {'playable_count': 2},
+])
+def test_late_shield_discount_preserves_other_plans_and_survival_uncertainty(override):
+    evaluator = EffectHeuristicEvaluator()
+    shield = _card('shield', _effect(ProduceExamEffectType.ExamBlock, 8))
+    state = BattleState(
+        remaining_turns=3, hp=15, genki=50,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+    )
+    protected = replace(state, **override)
+    result = evaluator.evaluate(cast(Any, shield), protected)
+    reference = evaluator.evaluate(cast(Any, shield), replace(protected, genki=10))
+    assert result.score == reference.score
+    assert '余量递减' not in result.reason
+
+
+@pytest.mark.parametrize('followup', [
+    ProduceExamEffectType.ExamPlayableValueAdd,
+    ProduceExamEffectType.ExamExtraTurn,
+    ProduceExamEffectType.ExamLessonDependBlock,
+    ProduceExamEffectType.ExamReviewDependExamBlock,
+])
+def test_late_shield_discount_keeps_explicit_payoff_or_extra_opportunity(followup):
+    evaluator = EffectHeuristicEvaluator()
+    card = _card('combo', _effect(ProduceExamEffectType.ExamBlock, 8), _effect(followup, 1000))
+    state = BattleState(
+        remaining_turns=3, hp=15, genki=50,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+    )
+    result = evaluator.evaluate(cast(Any, card), state)
+    assert '余量递减' not in result.reason
+
+
+def test_late_shield_discount_leaves_direct_output_unchanged():
+    evaluator = EffectHeuristicEvaluator()
+    state = BattleState(
+        remaining_turns=3, hp=15, genki=50,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+    )
+    card = _card('mixed', _effect(ProduceExamEffectType.ExamBlock, 8),
+                 _effect(ProduceExamEffectType.ExamLesson, 9))
+    shield = _card('shield', _effect(ProduceExamEffectType.ExamBlock, 8))
+    mixed = evaluator.evaluate(cast(Any, card), state)
+    defence = evaluator.evaluate(cast(Any, shield), state)
+    assert mixed.score - defence.score == pytest.approx(9)
+    assert mixed.projected_output == mixed.confirmed_output == 9
+
+
+def test_late_shield_discount_does_not_discount_persistent_hp_recovery():
+    evaluator = EffectHeuristicEvaluator()
+    card = _card('heal', _effect(ProduceExamEffectType.ExamStaminaRecoverFix, 4))
+    state = BattleState(
+        remaining_turns=3, hp=15, genki=50,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+    )
+    result = evaluator.evaluate(cast(Any, card), state)
+    reference = evaluator.evaluate(cast(Any, card), replace(state, genki=10))
+    assert result.score == reference.score
+    assert '余量递减' not in result.reason
+
+
+def test_late_shield_discount_does_not_restore_unknown_post_payment_genki():
+    evaluator = EffectHeuristicEvaluator()
+    card = _card('shield', _effect(ProduceExamEffectType.ExamBlock, 8), cost=3)
+    state = BattleState(
+        remaining_turns=3, hp=15, genki=50,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+        observed_effects=frozenset({'stamina_consumption_modifier'}),
+        observed_effect_values=(('stamina_consumption_modifier', None),),
+    )
+    result = evaluator.evaluate(cast(Any, card), state)
+    assert '余量递减' not in result.reason
