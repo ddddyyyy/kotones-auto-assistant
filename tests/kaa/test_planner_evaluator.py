@@ -2174,3 +2174,69 @@ def test_visible_score_decrease_never_certifies_uncalibrated_output(kind, exam):
 
     after = simulate_play(decrease, cast(Any, _card('setup')))
     assert not evaluator._output_multiplier_known(after)
+
+
+@pytest.mark.parametrize('verdict', [TriggerVerdict.ACTIVE, TriggerVerdict.INACTIVE,
+                                   TriggerVerdict.UNKNOWN])
+def test_plain_extra_turn_updates_search_horizon_without_changing_hud(monkeypatch, verdict):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+
+    turn = _effect(ProduceExamEffectType.ExamExtraTurn, 0, count=0)
+    turn.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    state = BattleState(remaining_turns=1, observed_remaining_turns=1, hp=20, genki=10)
+    future = simulator.simulate_play(state, cast(Any, _card('turn', turn)))
+    assert future.remaining_turns == (2 if verdict == TriggerVerdict.ACTIVE else 1)
+    assert future.remaining_turns_known == (verdict == TriggerVerdict.INACTIVE)
+    assert future.observed_remaining_turns == state.observed_remaining_turns == 1
+    assert future.playable_count == 0  # A turn extension is not another current play.
+    assert state.remaining_turns == 1
+
+
+@pytest.mark.parametrize('field,value', [
+    ('effect_value1', 2), ('effect_count', 2), ('_produce_card_grow_effect_ids', None),
+    ('_produce_card_grow_effect_ids', '["growth"]'),
+    ('_chain_produce_exam_effect_id', 'chain'), ('_produce_card_search_id', 'search'),
+])
+def test_complex_extra_turn_does_not_guess_search_horizon(field, value):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+
+    turn = _effect(ProduceExamEffectType.ExamExtraTurn, 0, count=0)
+    turn.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    setattr(turn.produce_exam_effect, field, value)
+    state = BattleState(remaining_turns=1, hp=20, genki=10)
+    future = simulate_play(state, cast(Any, _card('turn', turn)))
+    assert future.remaining_turns == 1
+    assert not future.remaining_turns_known
+
+
+def test_extra_turn_with_extra_play_keeps_followup_shield_useful():
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+
+    turn = _effect(ProduceExamEffectType.ExamExtraTurn, 0, count=0)
+    turn.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    extra = _effect(ProduceExamEffectType.ExamPlayableValueAdd, 1)
+    state = BattleState(remaining_turns=1, hp=20, genki=10)
+    after = simulate_play(state, cast(Any, _card('turn-and-play', turn, extra)))
+    shield = cast(Any, _card('shield', _effect(ProduceExamEffectType.ExamBlock, 8)))
+    evaluator = EffectHeuristicEvaluator()
+    assert after.playable_count == 1
+    assert evaluator.evaluate(shield, after).score > evaluator.evaluate(shield, state).score
+    next_state = simulate_play(after, shield)
+    assert next_state.remaining_turns == 2
+    assert not next_state.remaining_turns_known
+    assert next_state.observed_remaining_turns is None
+
+
+@pytest.mark.parametrize('projection', [False, True])
+def test_unresolved_or_projected_growth_does_not_invent_extra_turn(projection):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+
+    turn = _effect(ProduceExamEffectType.ExamExtraTurn, 0, count=0)
+    turn.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    state = BattleState(remaining_turns=1, hp=20, genki=10,
+        unresolved_growth_card_ids=frozenset() if projection else frozenset({'turn'}),
+        projected_card_growth=(('growth', True),) if projection else ())
+    future = simulate_play(state, cast(Any, _card('turn', turn)))
+    assert future.remaining_turns == 1
+    assert not future.remaining_turns_known

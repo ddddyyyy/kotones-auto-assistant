@@ -161,6 +161,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         memory.anomaly.extra_play_count - state.anomaly.extra_play_count
     )
 
+    extra_turns = 0
+    turns_known = state.remaining_turns_known
     stance_uncertain = state.projected_stance_uncertain
     stance_locked = state.anomaly.stance_locked
     lock_uncertain = state.projected_stance_lock_uncertain
@@ -238,6 +240,27 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         verdict = evaluate_trigger_id(
             getattr(play_effect, '_produce_exam_trigger_id', ''), state,
         )
+        if effect.effect_type == ProduceExamEffectType.ExamExtraTurn:
+            if verdict != TriggerVerdict.INACTIVE:
+                # The current DB primitive grants one turn with zero numeric
+                # fields. Restrict this forecast to the verified plain form;
+                # growth/chains/unknown conditions cannot invent opportunities.
+                plain = (
+                    not any(getattr(effect, name, 0) for name in (
+                        'effect_value1', 'effect_value2', 'effect_count', 'effect_turn',
+                    ))
+                    and getattr(effect, '_produce_card_grow_effect_ids', None) == '[]'
+                    and not getattr(effect, '_chain_produce_exam_effect_id', '')
+                    and not getattr(effect, 'chain_effect_ids', ())
+                    and not getattr(effect, '_produce_card_search_id', '')
+                    and card._id not in state.unresolved_growth_card_ids
+                    and not state.projected_card_growth
+                )
+                if verdict == TriggerVerdict.ACTIVE and plain:
+                    extra_turns += 1
+                # Even a deterministic extension is a search horizon, never
+                # new HUD evidence or proof of the next turn's attribute/draw.
+                turns_known = False
         if (
             (verdict == TriggerVerdict.UNKNOWN
              or (verdict == TriggerVerdict.ACTIVE and (lock_uncertain or full_power_uncertain)))
@@ -452,6 +475,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
     return replace(
         state,
         observed_card_output=None,
+        remaining_turns=state.remaining_turns + extra_turns,
+        remaining_turns_known=turns_known,
         hp=hp,
         genki=genki,
         playable_count=max(0, state.playable_count - 1 + added_plays),
