@@ -2158,14 +2158,16 @@ def test_late_shield_discount_does_not_restore_unknown_post_payment_genki():
 @pytest.mark.parametrize('kind', [ProduceExamEffectType.ExamLesson,
                                   ProduceExamEffectType.ExamLessonDependBlock])
 @pytest.mark.parametrize('exam', [False, True])
-def test_visible_score_decrease_never_certifies_uncalibrated_output(kind, exam):
+@pytest.mark.parametrize('arrow', ['lesson_value_up', 'lesson_value_down'])
+@pytest.mark.parametrize('percent', [None, 10, 75])
+def test_visible_score_percent_never_certifies_uncalibrated_output(kind, exam, arrow, percent):
     evaluator = EffectHeuristicEvaluator()
     card = _card('output', _effect(kind, 9 if kind == ProduceExamEffectType.ExamLesson else 1000))
     state = BattleState(remaining_turns=3, hp=20, genki=50,
                         is_exam=exam, exam_score_percent=100 if exam else None)
     reference = evaluator.evaluate(cast(Any, card), state)
-    decrease = replace(state, observed_effects=frozenset({'lesson_value_down'}),
-                       observed_effect_values=(('lesson_value_down', None),))
+    decrease = replace(state, observed_effects=frozenset({arrow}),
+                       observed_effect_values=((arrow, percent),))
     result = evaluator.evaluate(cast(Any, card), decrease)
     assert result.projected_output == reference.projected_output
     assert reference.confirmed_output > 0

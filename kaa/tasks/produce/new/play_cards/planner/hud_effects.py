@@ -222,6 +222,62 @@ def _digit_ocr():
     return ddddocr.DdddOcr(show_ad=False)
 
 
+def _read_effect_percent(screen: MatLike, icon_x: int, icon_y: int) -> int | None:
+    """Observe percentage text; this does not calibrate its scoring semantics."""
+    from kotonebot.backend.ocr import en
+
+    crop = screen[icon_y + 24:icon_y + 52, icon_x + 31:icon_x + 125]
+    if crop.size == 0 or crop.ndim != 3:
+        return None
+    try:
+        original = en().ocr(crop)
+        if len(original) != 1 or original[0].confidence < 0.98:
+            return None
+        match = re.fullmatch(r'(0|[1-9][0-9]{0,2})%', original[0].text)
+        if match is None:
+            return None
+        expected = match[1]
+        minimum = crop.min(axis=2)
+        white = ((minimum > 230) & (
+            crop.max(axis=2).astype('int16') - minimum < 20
+        )).astype('uint8') * 255
+        masked = en().ocr(white)
+        if any(result.confidence >= 0.98 and result.text != original[0].text
+               for result in masked):
+            return None
+        # Isolate complete digit glyphs before the percentage glyph. Do not
+        # remove classifier suffixes or substitute characters in its text.
+        _, _, stats, _ = cv2.connectedComponentsWithStats(white)
+        spans = sorted((int(x), int(x + width))
+                       for x, _, width, height, area in stats[1:]
+                       if area >= 3 and height >= 2)
+        groups: list[list[int]] = []
+        for left, right in spans:
+            if groups and left <= groups[-1][1]:
+                groups[-1][1] = max(groups[-1][1], right)
+            else:
+                groups.append([left, right])
+        if len(groups) != len(expected) + 1:
+            return None
+        left = max(0, groups[0][0] - 2)
+        right = min(crop.shape[1], groups[-2][1] + 2)
+        for image in (crop, white):
+            digits = cv2.resize(image[:, left:right], None, fx=3, fy=3,
+                                interpolation=cv2.INTER_CUBIC)
+            digits = cv2.copyMakeBorder(digits, 4, 4, 4, 4, cv2.BORDER_CONSTANT,
+                                       value=(0, 0, 0))
+            ok, encoded = cv2.imencode('.png', digits)
+            if not ok or _digit_ocr().classification(encoded.tobytes()) != expected:
+                return None
+            results = en().ocr(digits)
+            if (len(results) != 1 or results[0].confidence < 0.98
+                    or results[0].text != expected):
+                return None
+        return int(expected)
+    except Exception:
+        return None
+
+
 def _read_effect_value(
     screen: MatLike,
     effect: str,
@@ -234,6 +290,8 @@ def _read_effect_value(
     threshold variants vote on the result because the outlined game font often
     makes OCR confuse ``0``/``o`` and ``1``/``l``.
     """
+    if effect in {'lesson_value_up', 'lesson_value_down'}:
+        return _read_effect_percent(screen, icon_x, icon_y)
     boxes = {
         'parameter_buff': (icon_x + 31, icon_y + 24, icon_x + 68, icon_y + 52),
         'lesson_buff': (icon_x + 31, icon_y + 15, icon_x + 103, icon_y + 45),
