@@ -855,6 +855,15 @@ class EffectHeuristicEvaluator:
     def _score_output(output: float, state: BattleState) -> float:
         """CLEAR is only an intermediate lesson target; keep output beyond it."""
         if state.is_exam:
+            if (
+                state.archetype == ProduceExamEffectType.ExamCardPlayAggressive
+                and state.exam_score_percent is not None
+                and state.exam_score_percent > 0
+            ):
+                # Output already includes the current attribute percentage.
+                # Motivation/genki setup, payment and priors use parameter units;
+                # compare in those units without changing predicted exam points.
+                return output * 1.6 / (state.exam_score_percent / 100.0)
             return output * 1.6
         return output
 

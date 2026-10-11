@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -1810,3 +1811,52 @@ def test_conversion_rounding_does_not_expand_beyond_calibrated_scope(monkeypatch
     assert '分段进位' not in result.reason
     if boundary in {'unknown_genki', 'missing_percent', 'arrow', 'unknown_trigger', 'growth'}:
         assert result.confirmed_output == 0
+
+
+@pytest.mark.parametrize('percent', [50, 100, 468, 1091, 1676])
+@pytest.mark.parametrize('conversion', [False, True])
+def test_motivation_exam_ranking_uses_parameter_units_without_changing_points(percent, conversion):
+    state = BattleState(
+        remaining_turns=6, hp=20, genki=20, is_exam=True,
+        exam_score_percent=percent,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+    )
+    kind = (ProduceExamEffectType.ExamLessonDependBlock if conversion
+            else ProduceExamEffectType.ExamLessonFix)
+    card = _card('output', _effect(kind, 1000 if conversion else 20))
+    setup = _card('setup', _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5))
+    evaluator = EffectHeuristicEvaluator()
+    reference = replace(state, exam_score_percent=100)
+    result = evaluator.evaluate(cast(Any, card), state)
+    baseline = evaluator.evaluate(cast(Any, card), reference)
+    assert result.score == pytest.approx(baseline.score)
+    assert result.projected_output == pytest.approx(20 * percent / 100)
+    assert result.confirmed_output == pytest.approx(result.projected_output)
+    assert evaluator.evaluate(cast(Any, setup), state).score == pytest.approx(
+        evaluator.evaluate(cast(Any, setup), reference).score)
+
+
+@pytest.mark.parametrize('percent', [None, 0, -1])
+def test_motivation_exam_missing_or_invalid_percent_keeps_conservative_fallback(percent):
+    state = BattleState(remaining_turns=6, hp=20, genki=20, is_exam=True, exam_score_percent=percent,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    assert EffectHeuristicEvaluator._score_output(20, state) == 32
+
+
+@pytest.mark.parametrize('archetype', list(PROFILES))
+def test_motivation_normalization_leaves_courses_and_other_exam_profiles_unchanged(archetype):
+    state = BattleState(remaining_turns=6, hp=20, genki=20, archetype=archetype, exam_score_percent=468)
+    assert EffectHeuristicEvaluator._score_output(93.6, state) == 93.6
+    if archetype != ProduceExamEffectType.ExamCardPlayAggressive:
+        assert EffectHeuristicEvaluator._score_output(93.6, replace(state, is_exam=True)) == pytest.approx(149.76)
+
+
+@pytest.mark.parametrize('percent', [100, 468, 1676])
+def test_motivation_terminal_conversion_still_beats_unusable_setup(percent):
+    state = BattleState(remaining_turns=1, hp=20, genki=20,
+        is_exam=True, exam_score_percent=percent,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    scorer = _card('conversion', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    setup = _card('motivation', _effect(ProduceExamEffectType.ExamCardPlayAggressive, 5))
+    evaluator = EffectHeuristicEvaluator()
+    assert evaluator.evaluate(cast(Any, scorer), state).score > evaluator.evaluate(cast(Any, setup), state).score
