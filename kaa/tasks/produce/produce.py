@@ -29,6 +29,7 @@ _ACTIVE_PRODUCE_SCENES = {
     SceneType.PRACTICE,
     SceneType.PRACTICE_RESULT,
     SceneType.EXAM,
+    SceneType.EXAM_RESULT,
     SceneType.STUDY,
     SceneType.OUTING,
     SceneType.CONSULT,
@@ -191,9 +192,21 @@ def _resume_active_new_engine_produce(
     scenario: Scenario,
 ) -> bool:
     """Resume when the task starts while the game is already inside produce."""
-    device.screenshot()
-    scene = ProducePage().check_scene()
-    if scene is None or scene.type not in _ACTIVE_PRODUCE_SCENES:
+    page = ProducePage()
+    scene = None
+    for attempt in range(3):
+        device.screenshot()
+        scene = page.check_scene()
+        if scene is not None and scene.type in _ACTIVE_PRODUCE_SCENES:
+            break
+        # Refresh only an unrecognized/loading frame. A known non-produce
+        # page stays outside the resume path; retries never establish identity.
+        if scene is not None and scene.type != SceneType.LOADING:
+            return False
+        if at_home() or attempt == 2:
+            return False
+        sleep(0.3)
+    if scene is None:
         return False
 
     logger.info('Detected active produce scene %s; resuming in place.', scene.type.name)

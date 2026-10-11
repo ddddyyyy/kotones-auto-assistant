@@ -20,6 +20,7 @@ from kaa.tasks.actions.loading import loading
 from kaa.game_ui import CommuEventButtonUI, dialog, badge
 from .consts import Drink, Scene, SceneType, SelectDrinkDialog, PerformanceMetricsVal
 from .practice_result_scene import is_practice_result_screen
+from .exam_result_scene import is_exam_result_screen
 from kaa.tasks.produce.shared.cards import CardDetectResult, detect_recommended_card, skill_card_count
 from kaa.tasks.produce.shared.common import ProduceInterrupt
 from kaa.game_ui.skill_card_select import match_card_region
@@ -109,11 +110,17 @@ class _SceneCheckMixin:
             or self._check_action_like()
             or self._battle_scene()
             or self._practice_result_scene()
+            or self._exam_result_scene()
         )
 
     def _practice_result_scene(self) -> Scene | None:
         if is_practice_result_screen(device.screenshot()):
             return Scene(SceneType.PRACTICE_RESULT)
+        return None
+
+    def _exam_result_scene(self) -> Scene | None:
+        if is_exam_result_screen(device.screenshot()):
+            return Scene(SceneType.EXAM_RESULT)
         return None
 
     def check_interrupt_scene(self) -> Scene | None:

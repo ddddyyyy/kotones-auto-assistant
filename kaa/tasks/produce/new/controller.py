@@ -177,9 +177,9 @@ class ProduceController:
                     self.strategy.on_practice_entered(ctx)
                 else:
                     skip()
-            case SceneType.EXAM:
+            case SceneType.EXAM | SceneType.EXAM_RESULT:
                 ctx = ExamContext(self.page, self)
-                if not last_scene or last_scene.type != SceneType.EXAM:
+                if not last_scene or last_scene.type not in (SceneType.EXAM, SceneType.EXAM_RESULT):
                     logger.info("Entered exam battle scene.")
                     self.strategy.on_exam_entered(ctx)
             case SceneType.STUDY:

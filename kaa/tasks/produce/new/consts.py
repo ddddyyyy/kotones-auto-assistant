@@ -68,6 +68,9 @@ class SceneType(Enum):
     PRACTICE_RESULT = auto()
     """课程参数结果，沿既有跳过流程继续育成"""
 
+    EXAM_RESULT = auto()
+    """考试名次页，沿既有考试收尾流程继续"""
+
 
 @dataclass
 class Scene:
