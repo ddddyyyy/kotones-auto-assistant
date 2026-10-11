@@ -251,6 +251,25 @@ def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
     try:
         results = en().ocr(crop)
         if len(results) != 1 or results[0].confidence < 0.98:
+            # Shield edges can be read as a prefix on the original crop.
+            # Only recover an unreliable reading from this crop's white
+            # digits when both engines agree with the original classifier.
+            # High-confidence conflicts never reach this fallback.
+            if crop.ndim != 3 or any(result.confidence >= 0.98 for result in results):
+                return None
+            minimum = crop.min(axis=2)
+            white = ((minimum > 245) & (
+                crop.max(axis=2).astype('int16') - minimum < 12
+            )).astype('uint8') * 255
+            verified = en().ocr(white)
+            if (
+                len(verified) != 1 or verified[0].confidence < 0.98
+                or verified[0].text != str(value)
+            ):
+                return None
+            ok, encoded = cv2.imencode('.png', white)
+            if ok and _dddd().classification(encoded.tobytes()) == str(value):
+                return value
             return None
         reading = results[0].text
         raw = str(value)
