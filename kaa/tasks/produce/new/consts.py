@@ -65,6 +65,9 @@ class SceneType(Enum):
     PRODUCE_END = auto()
     """培育结算"""
 
+    PRACTICE_RESULT = auto()
+    """课程参数结果，沿既有跳过流程继续育成"""
+
 
 @dataclass
 class Scene:

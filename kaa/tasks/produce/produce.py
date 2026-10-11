@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 _ACTIVE_PRODUCE_SCENES = {
     SceneType.ACTION_SELECT,
     SceneType.PRACTICE,
+    SceneType.PRACTICE_RESULT,
     SceneType.EXAM,
     SceneType.STUDY,
     SceneType.OUTING,

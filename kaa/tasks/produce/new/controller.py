@@ -202,7 +202,7 @@ class ProduceController:
             case SceneType.PRODUCE_END:
                 ctx = ProduceEndContext(self.page, self)
                 self.strategy.on_produce_end(ctx)
-            case SceneType.IDLE:
+            case SceneType.IDLE | SceneType.PRACTICE_RESULT:
                 skip()
                 logger.info("Idle state. Doing nothing.")
             case SceneType.UNKNOWN:
