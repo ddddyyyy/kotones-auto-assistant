@@ -85,7 +85,9 @@ def _upgrade_marker_visible(letter_rect: Rect, next_letter: Rect | None) -> bool
     )
 
 
-def _visible_upgrade_count(img: MatLike, letter_rect: Rect) -> int:
+def _visible_upgrade_count(
+    img: MatLike, letter_rect: Rect, next_letter: Rect | None = None,
+) -> int:
     """Count trailing ``+`` glyphs in an unobscured card's name strip.
 
     The card artwork is shared by all upgrade levels. The title suffix is the
@@ -98,10 +100,20 @@ def _visible_upgrade_count(img: MatLike, letter_rect: Rect) -> int:
     top_y = int(letter_rect.y1)
     height, width = img.shape[:2]
     x1, x2 = max(0, center_x - 100), min(width, center_x + 100)
+    # Stop before the next card's name strip. The existing 100 px half-width
+    # also leaves a conservative margin before its physical left edge.
+    crowded = next_letter is not None and next_letter.center.x - center_x < 200
+    if crowded and next_letter is not None:
+        x2 = min(x2, int(next_letter.center.x) - 100)
     y1, y2 = max(0, top_y + 20), min(height, top_y + 46)
     if x1 >= x2 or y1 >= y2:
         return 0
     title = img[y1:y2, x1:x2]
+    # A cut through the name can make a Japanese stroke resemble a trailing
+    # cross. Require blank space after the suffix in the isolated strip.
+    if crowded and (title.shape[1] < 4 or
+                    not (cv2.cvtColor(title[:, -4:], cv2.COLOR_BGR2GRAY) >= 190).all()):
+        return 0
     return _title_upgrade_suffix(title)[0]
 
 
@@ -180,16 +192,10 @@ def _observed_upgrade_count(
     """Read an exposed title suffix even if the red badge is faded."""
     if not _upgrade_marker_visible(letter_rect, next_letter):
         return 0
-    suffix = _visible_upgrade_count(img, letter_rect)
+    suffix = _visible_upgrade_count(img, letter_rect, next_letter)
     if _has_upgrade_marker(img, letter_rect):
         return max(1, suffix)
-    # The title crop spans 200 px. A readable badge does not imply that its
-    # trailing title is exposed in a crowded hand.
-    title_visible = (
-        next_letter is None
-        or next_letter.center.x - letter_rect.center.x >= 200
-    )
-    return suffix if title_visible else 0
+    return suffix
 
 @dataclass
 class CardGameObject(GameObject):
