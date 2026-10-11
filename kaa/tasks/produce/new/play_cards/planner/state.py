@@ -174,9 +174,10 @@ class BattleState:
     rebuild state rather than treating this marker as an observation.
     """
 
-    observed_card_output: tuple[str, int, int] | None = None
+    observed_card_output: tuple[str, int, int | None] | None = None
     """Candidate-local current header (card kind, per-hit, count), ranking only.
 
+    A missing count remains None, including single-conversion ranking.
     Set only for the individual evaluation; never shared with other slots,
     lookahead, memory, or a later observation.
     """

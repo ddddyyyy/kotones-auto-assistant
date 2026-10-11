@@ -203,14 +203,23 @@ class CardGameObject(GameObject):
     _recognition_title: str | None = None
     _recognition_title_confidence: float | None = None
 
-    @cached_property
-    def output_preview(self) -> CardOutputPreview | None:
+    def _read_output_preview(self, *, wide_header: bool) -> CardOutputPreview | None:
         if any(
             0 < letter.center.x - self._letter_rect.center.x < 200
             for letter in _locate_letters(self._screenshot)
         ):
             return None
-        return read_card_output_preview(self._screenshot, self._letter_rect)
+        return read_card_output_preview(
+            self._screenshot, self._letter_rect, wide_header=wide_header,
+        )
+
+    @cached_property
+    def output_preview(self) -> CardOutputPreview | None:
+        return self._read_output_preview(wide_header=False)
+
+    @cached_property
+    def wide_output_preview(self) -> CardOutputPreview | None:
+        return self._read_output_preview(wide_header=True)
 
     @cached_property
     def has_growth_marker(self) -> bool:

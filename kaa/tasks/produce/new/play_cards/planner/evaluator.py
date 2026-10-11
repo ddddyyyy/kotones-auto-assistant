@@ -476,6 +476,14 @@ class EffectHeuristicEvaluator:
                     parameter = (effect_state.genki * 3200 + 999) // 1000
                     output = float((parameter * effect_state.exam_score_percent + 99) // 100)
                     reasons.append('已校准320%元气转换分段进位')
+                if preview_output is not None:
+                    # Retain an independently established model estimate only
+                    # when it is unchanged; the preview never establishes it.
+                    output_inputs_known &= float(preview_output) == output
+                    output = float(preview_output)
+                    reasons.append('同帧单次转换预览排序，实际收益未确认')
+                    if state.observed_card_output is not None and state.observed_card_output[2] is None:
+                        reasons.append('命中次数未观察，单次排序估算')
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('元气依赖参数')

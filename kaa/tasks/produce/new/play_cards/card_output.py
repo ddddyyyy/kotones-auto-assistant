@@ -20,11 +20,16 @@ def _integer_read(image: MatLike) -> int | None:
     return None
 
 
-def read_card_output_preview(screen: MatLike, letter: Rect) -> CardOutputPreview | None:
+def read_card_output_preview(
+    screen: MatLike, letter: Rect, *, wide_header: bool = False,
+) -> CardOutputPreview | None:
     """Read the header anchored to its own letter; no DB count fallback."""
     x, y = int(letter.center.x), letter.y1
     height, width = screen.shape[:2]
-    x1, x2, y1, y2 = x - 58, x + 75, y - 200, y - 153
+    # A plain four-digit banner starts at the left card edge. The compact
+    # growth/count crop can truncate its leading digit (2506 -> 506).
+    x1, x2 = (x - 94, x + 94) if wide_header else (x - 58, x + 75)
+    y1, y2 = y - 200, y - 153
     if x1 < 0 or y1 < 0 or x2 > width or y2 > height:
         return None
     crop = screen[y1:y2, x1:x2]

@@ -1980,3 +1980,85 @@ def test_exam_deadline_caps_both_plain_and_delayed_motivation_setup():
     assert max(result, key=lambda candidate: candidate[1].score)[0] is output
     unknown = PlannerStrategy()._protect_exam_finish(cast(Any, candidates), replace(state, genki_known=False))
     assert unknown == candidates
+
+
+
+def _single_conversion_effect():
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000)
+    effect.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    return effect
+
+
+@pytest.mark.parametrize('count', [None, 1])
+def test_single_genki_conversion_preview_is_ranking_only_with_unobserved_count(count):
+    card = cast(SkillCard, _card('convert', _single_conversion_effect(),
+                               cost_type=None))
+    state = BattleState(remaining_turns=1, hp=30, genki=208, is_exam=True,
+        exam_score_percent=803, archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+        observed_effect_values=(('lesson_value_up', None),),
+        observed_card_output=('convert', 2506, count))
+    result = EffectHeuristicEvaluator().evaluate(card, state)
+    assert result.projected_output == 2506
+    assert result.confirmed_output == 0
+    assert state.observed_card_output == ('convert', 2506, count)
+    assert '单次转换预览' in result.reason
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    assert simulate_play(state, card).observed_card_output is None
+
+
+
+@pytest.mark.parametrize('case', ['consume', 'multiple_hits', 'missing_count', 'missing_consumption',
+    'chain', 'grow_metadata', 'missing_growth_metadata', 'unresolved_growth', 'enchant', 'unknown_trigger', 'search'])
+def test_conversion_preview_scope_rejects_complex_or_unknown_metadata(monkeypatch, case):
+    from kaa.tasks.produce.new.play_cards.planner import visible_output
+    effect = _single_conversion_effect()
+    card = cast(SkillCard, _card('convert', effect))
+    state = BattleState(remaining_turns=2, hp=30, genki=208,
+                        observed_card_output=('convert', 2506, None))
+    if case == 'consume': effect.produce_exam_effect.effect_value2 = 1000
+    elif case == 'multiple_hits': effect.produce_exam_effect.effect_count = 2
+    elif case == 'missing_count': effect.produce_exam_effect.effect_count = None
+    elif case == 'missing_consumption': effect.produce_exam_effect.effect_value2 = None
+    elif case == 'chain': effect.produce_exam_effect._chain_produce_exam_effect_id = 'chain'
+    elif case == 'grow_metadata': effect.produce_exam_effect._produce_card_grow_effect_ids = '["grow"]'
+    elif case == 'missing_growth_metadata': effect.produce_exam_effect._produce_card_grow_effect_ids = None
+    elif case == 'unresolved_growth': state = replace(state, unresolved_growth_card_ids=frozenset({'convert'}))
+    elif case == 'enchant': setattr(card, '_produce_card_status_enchant_id', 'enchant')
+    elif case == 'unknown_trigger': monkeypatch.setattr(visible_output, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    else: state = replace(state, projected_effect_values=())
+    assert visible_output.current_preview_output(card, state) is None
+
+
+@pytest.mark.parametrize('count', [0, 2, 10])
+def test_conversion_preview_does_not_infer_repeated_hits(count):
+    from kaa.tasks.produce.new.play_cards.planner.visible_output import current_preview_output
+    card = cast(SkillCard, _card('convert', _single_conversion_effect()))
+    state = BattleState(remaining_turns=2, hp=30, genki=208,
+                        observed_card_output=('convert', 2506, count))
+    assert current_preview_output(card, state) is None
+
+
+def test_conversion_candidate_uses_wide_own_slot_without_inventing_count():
+    from kaa.tasks.produce.new.play_cards.card_output import CardOutputPreview
+    from kaa.tasks.produce.new.play_cards.planner.strategy import PlannerStrategy
+    card = cast(SkillCard, _card('convert', _single_conversion_effect()))
+    state = BattleState(remaining_turns=2, hp=30, genki=208)
+    hands = [SimpleNamespace(card=card, has_growth_marker=False,
+        output_preview=CardOutputPreview(506, None), wide_output_preview=CardOutputPreview(value, None))
+        for value in (2506, 1800)]
+    local = [PlannerStrategy._candidate_state(state, hand) for hand in hands]
+    assert [s.observed_card_output for s in local] == [('convert', 2506, None), ('convert', 1800, None)]
+    assert state.observed_card_output is None
+    hands[0].has_growth_marker = True
+    assert PlannerStrategy._candidate_state(state, hands[0]) is state
+
+
+@pytest.mark.parametrize('preview,confirmed', [(50, 50), (51, 0)])
+def test_conversion_preview_never_establishes_but_preserves_unchanged_model_proof(preview, confirmed):
+    card = cast(SkillCard, _card('convert', _single_conversion_effect()))
+    state = BattleState(remaining_turns=1, hp=20, genki=50)
+    evaluator = EffectHeuristicEvaluator()
+    assert evaluator.evaluate(card, state).confirmed_output == 50
+    result = evaluator.evaluate(card, replace(state, observed_card_output=('convert', preview, None)))
+    assert result.projected_output == preview
+    assert result.confirmed_output == confirmed

@@ -27,7 +27,7 @@ from .profiles import profile_for
 from .simulator import can_afford_play, play_cost, simulate_play
 from .state import BattleState
 from .trigger import TriggerVerdict, evaluate_trigger_id
-from .visible_output import supports_current_preview
+from .visible_output import supports_current_preview, is_single_genki_conversion
 
 if TYPE_CHECKING:
     from kaa.db.skill_card import SkillCard
@@ -528,10 +528,17 @@ class PlannerStrategy(AbstractBattleStrategy):
     def _candidate_state(state: BattleState, hand: 'CardGameObject') -> BattleState:
         if hand.card is None or not supports_current_preview(hand.card, state):
             return state
-        if not getattr(hand, 'has_growth_marker', False):
-            return state
-        preview = getattr(hand, 'output_preview', None)
-        if preview is None or preview.count is None:
+        conversion = is_single_genki_conversion(hand.card)
+        has_growth = getattr(hand, 'has_growth_marker', False)
+        if conversion:
+            if has_growth:
+                return state
+            preview = getattr(hand, 'wide_output_preview', None)
+        else:
+            if not has_growth:
+                return state
+            preview = getattr(hand, 'output_preview', None)
+        if preview is None or (preview.count is None and not conversion):
             return state
         return replace(state, observed_card_output=(hand.card._id, preview.per_hit, preview.count))
 
