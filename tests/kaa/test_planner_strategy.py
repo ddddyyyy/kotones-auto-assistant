@@ -1280,3 +1280,99 @@ def test_search_does_not_bonus_followup_from_unknown_preservation_exit():
     ranked = strategy._add_shallow_lookahead(cast(Any, candidates), state)
     assert ranked[0][1].score == 10
     assert '两步预估后续' not in ranked[0][1].reason
+
+
+class MotivationSequenceEvaluator:
+    def evaluate(self, card, state):
+        output = float(state.genki) if card._id == 'convert' else 0.0
+        return CardEvaluation(
+            card._id, output if output else (1.0 if card._id == 'prepare' else 0.0),
+            EvaluationConfidence.MEDIUM, card._id,
+            projected_output=output,
+            confirmed_output=output if state.genki_known else 0.0,
+        )
+
+
+def _motivation_sequence():
+    extra = _planner_hand('extra', _effect(ProduceExamEffectType.ExamPlayableValueAdd, 0))
+    prepare = _planner_hand('prepare', _effect(ProduceExamEffectType.ExamBlockFix, 20))
+    convert = _planner_hand('convert', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    state = BattleState(remaining_turns=5, hp=20, genki=2, playable_count=2,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    strategy = PlannerStrategy(MotivationSequenceEvaluator())
+    hands = [extra, prepare, convert]
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand in hands]
+    return strategy, state, candidates
+
+
+def test_motivation_search_values_extra_prepare_convert_sequence():
+    strategy, state, candidates = _motivation_sequence()
+    two = strategy._add_shallow_lookahead(cast(Any, candidates), state, depth=2)
+    three = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert two[0][1].score == pytest.approx(1.8)
+    assert three[0][1].score == pytest.approx(0.9 * (1 + 0.9 * 22))
+    assert 'prepare' in three[0][1].reason and 'convert' in three[0][1].reason
+    # This is ranking value only; future conversion is not current output.
+    assert three[0][1].projected_output == three[0][1].confirmed_output == 0
+    assert state.genki == 2 and state.playable_count == 2
+
+
+@pytest.mark.parametrize('boundary', ['one_play', 'other_archetype', 'no_converter', 'two_instances'])
+def test_motivation_search_does_not_invent_third_play(boundary):
+    strategy, state, candidates = _motivation_sequence()
+    if boundary == 'one_play': state = replace(state, playable_count=1)
+    elif boundary == 'other_archetype': state = replace(state, archetype=ProduceExamEffectType.ExamReview)
+    elif boundary == 'no_converter': candidates = candidates[:2]
+    else: candidates = [candidates[0], candidates[2]]
+    two = strategy._add_shallow_lookahead(cast(Any, candidates), state, depth=2)
+    current = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert [e.score for _, e in current] == [e.score for _, e in two]
+
+
+def test_third_play_can_become_payable_after_preparation():
+    strategy, state, candidates = _motivation_sequence()
+    state = replace(state, hp=0, genki=2)
+    candidates[2][0].card.stamina = 10
+    assert can_afford_play(state, candidates[2][0].card) is False
+    three = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert three[0][1].score == pytest.approx(0.9 * (1 + 0.9 * 22))
+
+
+@pytest.mark.parametrize('gate', ['unknown_payment', 'unknown_trigger', 'inactive_trigger'])
+def test_third_play_requires_verified_payment_and_usage(monkeypatch, gate):
+    strategy, state, candidates = _motivation_sequence()
+    if gate == 'unknown_payment':
+        state = replace(state, hp=0, hp_known=False)
+        candidates[2][0].card.force_stamina = 1
+    else:
+        from kaa.tasks.produce.new.play_cards.planner import trigger
+        candidates[2][0].card._play_produce_exam_trigger_id = 'gate'
+        condition = trigger.ExamTrigger(field_status_types=('ProduceExamFieldStatusType_BlockUp',),
+                                        field_status_values=(100,))
+        monkeypatch.setattr(trigger, 'load_exam_trigger', lambda key: (
+            condition if key and gate == 'inactive_trigger' else None))
+    three = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert three[0][1].score == pytest.approx(0.9)
+
+
+
+def test_three_card_search_uses_production_motivation_resource_model():
+    from kaa.tasks.produce.new.play_cards.planner.evaluator import CompositeEvaluator
+    strategy, state, candidates = _motivation_sequence()
+    strategy = PlannerStrategy(CompositeEvaluator())
+    for hand, _ in candidates:
+        hand.card.plan_type = ProducePlanType.Common.value
+    # Start with one play, and an explicit two-play grant. No future draw is
+    # needed: all three distinct cards are in the observed hand.
+    candidates[0][0].card.play_effects[0].produce_exam_effect.effect_value1 = 2
+    state = replace(state, playable_count=1)
+    candidates = [(hand, strategy._evaluator.evaluate(hand.card, state)) for hand, _ in candidates]
+    two = strategy._add_shallow_lookahead(cast(Any, candidates), state, depth=2)
+    three = strategy._add_shallow_lookahead(cast(Any, candidates), state)
+    assert three[0][1].score > two[0][1].score
+    after_extra = simulate_play(state, candidates[0][0].card)
+    after_prepare = simulate_play(after_extra, candidates[1][0].card)
+    assert after_extra.playable_count == 2 and after_prepare.playable_count == 1
+    conversion = strategy._evaluator.evaluate(candidates[2][0].card, after_prepare)
+    assert conversion.confirmed_output == 22
+    assert three[0][1].confirmed_output == 0

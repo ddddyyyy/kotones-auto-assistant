@@ -539,8 +539,24 @@ class PlannerStrategy(AbstractBattleStrategy):
         self,
         candidates: list[tuple['CardGameObject', CardEvaluation]],
         state: BattleState,
+        *,
+        depth: int | None = None,
     ) -> list[tuple['CardGameObject', CardEvaluation]]:
-        """Compare two-card orderings only when another play is available."""
+        """Compare visible same-turn sequences with verified additional plays."""
+        if depth is None:
+            # Motivation can need an extra-play card, genki preparation, and
+            # conversion in that order. Keep the existing two-card scope for
+            # other decks and for hands with no visible conversion opportunity.
+            has_converter = any(
+                hand.card is not None and any(
+                    effect.produce_exam_effect is not None
+                    and effect.produce_exam_effect.effect_type
+                    == ProduceExamEffectType.ExamLessonDependBlock
+                    for effect in hand.card.play_effects
+                )
+                for hand, _ in candidates
+            ) if state.archetype == ProduceExamEffectType.ExamCardPlayAggressive else False
+            depth = 3 if has_converter else 2
         ranked: list[tuple[CardGameObject, CardEvaluation]] = []
         for first_card, first in candidates:
             if first_card.card is None:
@@ -565,24 +581,38 @@ class PlannerStrategy(AbstractBattleStrategy):
                         ),
                     )
             followups = [
-                evaluation
+                (second_card, evaluation)
                 for second_card, _ in candidates
                 if second_card is not first_card and second_card.card is not None
-                and can_afford_play(future, second_card.card) is True
-                # Payment alone cannot establish the card's usage condition.
-                # Recheck after the first play, using trusted projected balances;
-                # missing metadata or an unobserved event phase stays unknown.
-                and evaluate_trigger_id(
-                    getattr(second_card.card, '_play_produce_exam_trigger_id', '') or '',
-                    future,
-                ) == TriggerVerdict.ACTIVE
                 for evaluation in [self._evaluator.evaluate(second_card.card, future)]
                 if evaluation is not None
             ]
             if future.playable_count <= 0 or not followups:
                 ranked.append((first_card, first))
                 continue
-            best_followup = max(followups, key=lambda item: item.score)
+            if depth > 2:
+                # Reuse the same payment/trigger checks after the second play;
+                # removing the first object prevents playing one instance twice.
+                followups = self._add_shallow_lookahead(
+                    followups, future, depth=depth - 1,
+                )
+            # Filter the next play only after searching the remaining hand:
+            # recovery may make a currently unaffordable third card payable.
+            # Payment cannot establish a usage condition; recheck both against
+            # this prefix, with unknown event phases remaining unknown.
+            followups = [
+                (hand, evaluation) for hand, evaluation in followups
+                if hand.card is not None
+                and can_afford_play(future, hand.card) is True
+                and evaluate_trigger_id(
+                    getattr(hand.card, '_play_produce_exam_trigger_id', '') or '',
+                    future,
+                ) == TriggerVerdict.ACTIVE
+            ]
+            if not followups:
+                ranked.append((first_card, first))
+                continue
+            _, best_followup = max(followups, key=lambda item: item[1].score)
             followup_score = max(0.0, best_followup.score) * 0.9
             ranked.append((
                 first_card,
@@ -591,8 +621,9 @@ class PlannerStrategy(AbstractBattleStrategy):
                     score=first.score + followup_score,
                     confidence=first.confidence,
                     reason=(
-                        f'{first.reason}；两步预估后续 {best_followup.card_id}'
+                        f'{first.reason}；{"三步" if depth > 2 else "两步"}预估后续 {best_followup.card_id}'
                         f' {followup_score:+.1f}'
+                        + (f'（{best_followup.reason}）' if depth > 2 else '')
                     ),
                     projected_output=first.projected_output,
                     confirmed_output=first.confirmed_output,
