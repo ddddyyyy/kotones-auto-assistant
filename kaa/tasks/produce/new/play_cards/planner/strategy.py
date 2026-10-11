@@ -426,17 +426,17 @@ class PlannerStrategy(AbstractBattleStrategy):
                     ProduceExamEffectType.ExamPreservation,
                     ProduceExamEffectType.ExamOverPreservation,
                 }
-                if state.archetype == ProduceExamEffectType.ExamCardPlayAggressive:
-                    # Surplus genki still needs a scoring card to cash it out.
-                    # Do not let another single-play motivation setup assume a
-                    # hidden future conversion at the exam deadline. Visible
-                    # extra-play combinations were retained above.
-                    deferred_types.add(ProduceExamEffectType.ExamCardPlayAggressive)
                 surplus_defence = (
                     state.genki_known
                     and state.genki >= 10
                     and bool(effect_types)
-                    and effect_types <= deferred_types
+                    and (
+                        effect_types <= deferred_types
+                        or (
+                            state.archetype == ProduceExamEffectType.ExamCardPlayAggressive
+                            and ProduceExamEffectType.ExamCardPlayAggressive in effect_types
+                        )
+                    )
                 )
                 if not surplus_defence:
                     ranked.append((card, evaluation))

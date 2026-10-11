@@ -1958,3 +1958,25 @@ def test_exam_deadline_does_not_stack_surplus_motivation_instead_of_visible_outp
         (output, CardEvaluation('output', 6, EvaluationConfidence.LOW, 'output', projected_output=24.12, confirmed_output=24.12))]
     result = PlannerStrategy()._protect_exam_finish(cast(Any, candidates), state)
     assert (result[0][1].score < result[1][1].score) is protected
+
+
+
+def test_exam_deadline_caps_both_plain_and_delayed_motivation_setup():
+    from kaa.tasks.produce.new.play_cards.planner.strategy import PlannerStrategy
+    state = BattleState(remaining_turns=3, hp=20, genki=84, is_exam=True,
+        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    plain = SimpleNamespace(card=_card('plain',
+        _effect(ProduceExamEffectType.ExamBlock, 1),
+        _effect(ProduceExamEffectType.ExamCardPlayAggressive, 2)))
+    delayed = SimpleNamespace(card=_card('delayed',
+        _effect(ProduceExamEffectType.ExamCardPlayAggressive, 3),
+        _effect(ProduceExamEffectType.ExamEffectTimer, 0),
+        _effect(ProduceExamEffectType.ExamStatusEnchant, 0)))
+    output = SimpleNamespace(card=_card('output', _effect(ProduceExamEffectType.ExamLesson, 6)))
+    candidates = [(plain, CardEvaluation('plain', 18, EvaluationConfidence.LOW, 'plain')),
+        (delayed, CardEvaluation('delayed', 17, EvaluationConfidence.LOW, 'delayed')),
+        (output, CardEvaluation('output', 6, EvaluationConfidence.LOW, 'output', projected_output=24.12, confirmed_output=24.12))]
+    result = PlannerStrategy()._protect_exam_finish(cast(Any, candidates), state)
+    assert max(result, key=lambda candidate: candidate[1].score)[0] is output
+    unknown = PlannerStrategy()._protect_exam_finish(cast(Any, candidates), replace(state, genki_known=False))
+    assert unknown == candidates
