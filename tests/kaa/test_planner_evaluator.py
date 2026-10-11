@@ -2007,7 +2007,7 @@ def test_single_genki_conversion_preview_is_ranking_only_with_unobserved_count(c
 
 
 
-@pytest.mark.parametrize('case', ['consume', 'multiple_hits', 'missing_count', 'missing_consumption',
+@pytest.mark.parametrize('case', ['partial_consume', 'multiple_hits', 'missing_count', 'missing_consumption',
     'chain', 'grow_metadata', 'missing_growth_metadata', 'unresolved_growth', 'enchant', 'unknown_trigger', 'search'])
 def test_conversion_preview_scope_rejects_complex_or_unknown_metadata(monkeypatch, case):
     from kaa.tasks.produce.new.play_cards.planner import visible_output
@@ -2015,7 +2015,7 @@ def test_conversion_preview_scope_rejects_complex_or_unknown_metadata(monkeypatc
     card = cast(SkillCard, _card('convert', effect))
     state = BattleState(remaining_turns=2, hp=30, genki=208,
                         observed_card_output=('convert', 2506, None))
-    if case == 'consume': effect.produce_exam_effect.effect_value2 = 1000
+    if case == 'partial_consume': effect.produce_exam_effect.effect_value2 = 500
     elif case == 'multiple_hits': effect.produce_exam_effect.effect_count = 2
     elif case == 'missing_count': effect.produce_exam_effect.effect_count = None
     elif case == 'missing_consumption': effect.produce_exam_effect.effect_value2 = None
@@ -2242,3 +2242,29 @@ def test_unresolved_or_projected_growth_does_not_invent_extra_turn(projection):
     future = simulate_play(state, cast(Any, _card('turn', turn)))
     assert future.remaining_turns == 1
     assert not future.remaining_turns_known
+
+
+@pytest.mark.parametrize('consumption', [0, 1000])
+@pytest.mark.parametrize('count', [None, 1])
+def test_single_conversion_preview_preserves_payment_and_consumption(consumption, count):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
+    from kaa.tasks.produce.new.play_cards.planner.costs import play_cost
+    effect = _single_conversion_effect()
+    effect.produce_exam_effect.effect_value1 = 4000
+    effect.produce_exam_effect.effect_value2 = consumption
+    card = cast(SkillCard, _card('convert', effect))
+    card.force_stamina = 1
+    state = BattleState(remaining_turns=4, hp=14, genki=149,
+        observed_effects=frozenset({'lesson_value_up'}))
+    observed = replace(state, observed_card_output=('convert', 167, count))
+    evaluator = EffectHeuristicEvaluator()
+    assert evaluator.evaluate(card, state).projected_output == 596
+    result = evaluator.evaluate(card, observed)
+    assert result.projected_output == 167
+    assert result.confirmed_output == 0
+    assert play_cost(state, card) == play_cost(observed, card)
+    before = simulate_play(state, card)
+    after = simulate_play(observed, card)
+    assert after.observed_card_output is None
+    assert before == after
+    assert after.genki == (0 if consumption else 149)

@@ -15,7 +15,7 @@ _ALLOWED = {
 
 
 def is_single_genki_conversion(card: SkillCard) -> bool:
-    """Static single-segment scope, never an observed hit-count claim."""
+    """Static single segment with no consumption or full consumption only."""
     effects = getattr(card, 'play_effects', ())
     if len(effects) != 1 or getattr(card, '_produce_card_status_enchant_id', ''):
         return False
@@ -24,7 +24,7 @@ def is_single_genki_conversion(card: SkillCard) -> bool:
         effect is not None
         and effect.effect_type == ProduceExamEffectType.ExamLessonDependBlock
         and (effect.effect_value1 or 0) > 0
-        and effect.effect_value2 == 0
+        and effect.effect_value2 in {0, 1000}
         and effect.effect_count in {0, 1}
         and getattr(effect, '_produce_card_grow_effect_ids', None) == '[]'
     )
@@ -49,7 +49,7 @@ def supports_current_preview(card: SkillCard, state: BattleState) -> bool:
         if effect.effect_type in {
             ProduceExamEffectType.ExamLesson, ProduceExamEffectType.ExamLessonDependBlock,
         }:
-            if effect.effect_value2:
+            if effect.effect_value2 and not conversion:
                 return False
             scoring_segments += 1
     return scoring_segments == 1
