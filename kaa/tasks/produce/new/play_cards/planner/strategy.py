@@ -397,6 +397,7 @@ class PlannerStrategy(AbstractBattleStrategy):
             future = simulate_play(state, card.card)
             if (
                 future.playable_count > 0
+                or future.remaining_turns > state.remaining_turns
                 or (
                     future.anomaly.full_power_pending
                     and not state.anomaly.full_power_pending

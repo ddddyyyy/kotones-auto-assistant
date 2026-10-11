@@ -1376,3 +1376,31 @@ def test_three_card_search_uses_production_motivation_resource_model():
     conversion = strategy._evaluator.evaluate(candidates[2][0].card, after_prepare)
     assert conversion.confirmed_output == 22
     assert three[0][1].confirmed_output == 0
+
+
+@pytest.mark.parametrize('verdict,plain,expected', [
+    ('ACTIVE', True, 23), ('UNKNOWN', True, 7),
+    ('INACTIVE', True, 7), ('ACTIVE', False, 7),
+])
+def test_exam_finish_preserves_only_confirmed_extra_turn_window(monkeypatch, verdict, plain, expected):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: TriggerVerdict[verdict])
+    effect = _effect(ProduceExamEffectType.ExamExtraTurn, 0)
+    effect.produce_exam_effect.effect_count = 0
+    effect.produce_exam_effect._produce_card_grow_effect_ids = '[]' if plain else None
+    extension = _planner_hand('extension', effect)
+    output = _planner_hand('output', _effect(ProduceExamEffectType.ExamLesson, 9))
+    state = BattleState(remaining_turns=2, hp=16, genki=21, is_exam=True,
+                        observed_remaining_turns=2)
+    candidates = [
+        (extension, CardEvaluation('extension', 23, EvaluationConfidence.MEDIUM, 'extension')),
+        (output, CardEvaluation('output', 8, EvaluationConfidence.MEDIUM, 'output',
+                               projected_output=9, confirmed_output=9)),
+    ]
+    ranked = PlannerStrategy(FakeEvaluator({}), is_exam=True)._protect_exam_finish(
+        cast(Any, candidates), state)
+    assert ranked[0][1].score == expected
+    assert ranked[1][1].score == 8
+    assert ranked[0][1].confirmed_output == 0
+    assert state.observed_remaining_turns == 2
