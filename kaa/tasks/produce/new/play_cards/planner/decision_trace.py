@@ -181,6 +181,7 @@ class DecisionTrace:
         selected: 'CardEvaluation',
         *, selected_hand: 'CardGameObject | None' = None,
         selected_slot: int | None = None,
+        accepted_output_previews: dict[int, dict] | None = None,
     ) -> None:
         self.pending = None
         if self.count >= 256:
@@ -202,6 +203,9 @@ class DecisionTrace:
                     {
                         'evaluation': asdict(evaluation),
                         'observed_output_preview': _card_preview_metadata(hand),
+                        # Supplied from the exact state evaluated for this copy;
+                        # tracing never triggers another lazy OCR read.
+                        'accepted_output_preview': (accepted_output_previews or {}).get(id(hand)),
                         'observed_growth_marker': getattr(hand, 'has_growth_marker', False),
                         'upgrade_count': getattr(hand.card, 'upgrade_count', None),
                         'stamina': getattr(hand.card, 'stamina', None),

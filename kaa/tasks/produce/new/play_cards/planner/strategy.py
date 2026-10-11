@@ -125,11 +125,15 @@ class PlannerStrategy(AbstractBattleStrategy):
             self._pending_play = None
             self._memory_before_pending_play = None
         self._last_move_state = state
+        candidate_states = {
+            id(hand): self._candidate_state(state, hand)
+            for hand in hands if hand.card is not None
+        }
         candidates: list[tuple[CardGameObject, CardEvaluation]] = [
             (card, evaluation)
             for card in hands
             if card.card is not None
-            for evaluation in [self._evaluator.evaluate(card.card, self._candidate_state(state, card))]
+            for evaluation in [self._evaluator.evaluate(card.card, candidate_states[id(card)])]
             if evaluation is not None
         ]
         if not candidates:
@@ -201,6 +205,17 @@ class PlannerStrategy(AbstractBattleStrategy):
             )
             self._decision_trace.decision(
                 state, traced_candidates, best, selected_hand=best_card,
+                accepted_output_previews={
+                    id(hand): {
+                        "per_hit": observation[1], "count": observation[2],
+                        "source": "wide_header" if is_single_genki_conversion(hand.card)
+                        else "ordinary_header",
+                    }
+                    for hand, _ in traced_candidates
+                    if hand.card is not None
+                    and candidate_states[id(hand)] is not state
+                    and (observation := candidate_states[id(hand)].observed_card_output) is not None
+                },
                 selected_slot=next(
                     (slot for slot, hand in enumerate(observed_hands) if hand is best_card),
                     None,

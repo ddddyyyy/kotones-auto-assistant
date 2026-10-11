@@ -353,3 +353,37 @@ def test_selected_instance_missing_from_candidates_keeps_identity_unknown(tmp_pa
     event = json.loads(trace.path.read_text(encoding='utf-8'))
     assert event['selected_candidate_index'] is None
     assert event['selected_slot'] is None
+
+
+def test_accepted_preview_keeps_copy_source_unknown_count_without_lazy_reads(tmp_path):
+    class Hand:
+        def __init__(self):
+            self.card = SimpleNamespace(_id='same', stamina=0, force_stamina=0, play_effects=[])
+
+        @property
+        def output_preview(self):
+            raise AssertionError('Trace must not read preview OCR')
+
+        @property
+        def wide_output_preview(self):
+            raise AssertionError('Trace must not read wide preview OCR')
+
+    first, second = Hand(), Hand()
+    state = BattleState(remaining_turns=2, hp=7, genki=19)
+    evaluation = CardEvaluation('same', 19, EvaluationConfidence.LOW, 'test')
+    trace = DecisionTrace(tmp_path)
+    trace.decision(
+        state, [(first, evaluation), (second, evaluation)], evaluation,
+        selected_hand=second, selected_slot=1,
+        accepted_output_previews={id(second): {
+            'per_hit': 19, 'count': None, 'source': 'wide_header',
+        }},
+    )
+    event = json.loads(trace.path.read_text(encoding='utf-8'))
+    assert event['selected_candidate_index'] == 1
+    assert event['candidates'][0]['accepted_output_preview'] is None
+    assert event['candidates'][1]['accepted_output_preview'] == {
+        'per_hit': 19, 'count': None, 'source': 'wide_header',
+    }
+    assert all(row['observed_output_preview'] is None for row in event['candidates'])
+    assert event['state']['observed_card_output'] is None
