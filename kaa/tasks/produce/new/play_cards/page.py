@@ -96,6 +96,7 @@ def _read_exam_score(
 ) -> int | None:
     primary: set[int] = set()
     secondary: set[int] = set()
+    same_crop_agreement: set[int] = set()
     variants = _exam_score_variants(screen, box)
     original_zero = False
     try:
@@ -106,17 +107,26 @@ def _read_exam_score(
             verified = _digits_from_image(crop, fallback_raw=True)
             if len(verified) == 1:
                 secondary.add(verified[0])
+                if (
+                    len(results) == 1
+                    and results[0].text.isdecimal()
+                    and results[0].confidence >= 0.8
+                    and int(results[0].text) == verified[0]
+                ):
+                    same_crop_agreement.add(verified[0])
             if index == 0:
                 original_zero = verified == [0]
     except Exception:
         logger.warning('Could not verify ranked exam score.', exc_info=True)
         return None
-    agreed = primary & secondary
-    if len(agreed) == 1:
-        return agreed.pop()
+    # Never combine one engine on the original with another on the mask.
+    # Every accepted reading must agree within a crop and have no conflicting
+    # readings from the other variant.
+    if len(primary) == 1 and primary == secondary == same_crop_agreement:
+        return next(iter(primary))
     # Preserve the existing tiny-zero fallback, but do not let it override
     # contradictory nonzero primary readings or multiple consensus values.
-    if not primary and allow_zero_fallback and original_zero:
+    if not primary and secondary == {0} and allow_zero_fallback and original_zero:
         return 0
     logger.debug('Ranked exam score disagreement: primary=%s secondary=%s box=%s', primary, secondary, box)
     return None

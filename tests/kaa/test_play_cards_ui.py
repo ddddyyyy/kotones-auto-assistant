@@ -263,9 +263,11 @@ def test_score_variants_remove_frame_without_erasing_digits():
 
 
 @pytest.mark.parametrize('primary_values, secondary_values, expected', [
-    (['3081', '308'], [[308], [308]], 308),
-    (['15622', '13622'], [[13622], [13622]], 13622),
+    (['3081', '308'], [[308], [308]], None),
+    (['15622', '13622'], [[13622], [13622]], None),
     (['31489', '51489'], [[31489], [51489]], None),
+    (['174', 'i7 I'], [[17], [174]], None),
+    (['17', '17'], [[17], [17]], 17),
 ])
 def test_score_variants_require_unique_cross_engine_consensus(monkeypatch, primary_values, secondary_values, expected):
     primary = iter(primary_values)
