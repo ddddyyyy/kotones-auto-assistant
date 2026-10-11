@@ -298,6 +298,37 @@ def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
     return None
 
 
+def _read_fragmented_genki(crop: MatLike) -> int | None:
+    """Replace fragments only with complete consensus on each current variant."""
+    if crop.ndim != 3:
+        return None
+    minimum = crop.min(axis=2)
+    white = ((minimum > 245) & (
+        crop.max(axis=2).astype('int16') - minimum < 12
+    )).astype('uint8') * 255
+    readings: list[int] = []
+    try:
+        for image in (crop, white):
+            ok, encoded = cv2.imencode('.png', image)
+            if not ok:
+                return None
+            text = _dddd().classification(encoded.tobytes())
+            # Never join fragments or turn a non-digit character into zero.
+            if not isinstance(text, str) or re.fullmatch(r'0|[1-9][0-9]*', text) is None:
+                return None
+            results = en().ocr(image)
+            if (
+                len(results) != 1 or results[0].confidence < 0.98
+                or results[0].text != text
+            ):
+                return None
+            readings.append(int(text))
+    except Exception:
+        logger.debug('Could not verify fragmented genki reading.', exc_info=True)
+        return None
+    return readings[0] if readings[0] == readings[1] else None
+
+
 def _fetch_int(
     box: Rect, *, fallback_raw: bool = False, verify_hp: bool = False,
     verify_genki: bool = False, screen: MatLike | None = None,
@@ -306,6 +337,8 @@ def _fetch_int(
         screen = device.screenshot()
     crop = screen[box.y1:box.y2, box.x1:box.x2]
     nums = _digits_from_image(crop, fallback_raw=fallback_raw)
+    if verify_genki and len(nums) > 1:
+        return _read_fragmented_genki(crop)
     if not nums:
         return None
     if verify_hp:
