@@ -1446,3 +1446,29 @@ def test_motivation_setup_phase_keeps_safety_and_no_preparation_fallback(monkeyp
     elif boundary == 'negative_setup': rows[0] = (setup, replace(rows[0][1], score=-1))
     else: state = replace(state, score_gap=100, score_target_is_final=False)
     assert PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state) == rows
+
+
+@pytest.mark.parametrize('boundary,expected', [('mixed', 'mixed'), ('consume', 'setup'),
+    ('unknown_gain', 'setup'), ('zero_gain', 'setup'), ('unaffordable', 'setup')])
+def test_motivation_phase_retains_native_gain_on_mixed_output(monkeypatch, boundary, expected):
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    gain = _effect(ProduceExamEffectType.ExamCardPlayAggressive, 4)
+    output = _effect(ProduceExamEffectType.ExamLessonDependBlock, 800)
+    mixed = _planner_hand('mixed', gain, output)
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    if boundary == 'consume': output.produce_exam_effect.effect_value2 = 1000
+    elif boundary == 'zero_gain': gain.produce_exam_effect.effect_value1 = 0
+    elif boundary == 'unaffordable': mixed.card.stamina = 100
+    elif boundary == 'unknown_gain':
+        gain._produce_exam_trigger_id = 'gain'
+        monkeypatch.setattr(strategy_module, 'evaluate_trigger_id',
+            lambda trigger, _: TriggerVerdict.UNKNOWN if trigger == 'gain' else TriggerVerdict.ACTIVE)
+    rows = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+            (mixed, CardEvaluation('mixed', 200, EvaluationConfidence.MEDIUM, 'mixed',
+                                   projected_output=100, confirmed_output=0))]
+    state = BattleState(remaining_turns=8, archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+                        hp=20, genki=30)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert max(ranked, key=lambda pair: pair[1].score)[1].card_id == expected
+    assert ranked[1][1].projected_output == 100
+    assert ranked[1][1].confirmed_output == 0

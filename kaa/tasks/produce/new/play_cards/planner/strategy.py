@@ -348,13 +348,15 @@ class PlannerStrategy(AbstractBattleStrategy):
             ProduceExamEffectType.ExamCardPlayAggressive,
         }
         setup_scores = []
+        setup_ids: set[int] = set()
         for hand, evaluation in candidates:
             card = hand.card
-            if (card is None or evaluation.projected_output > 0 or evaluation.score <= 0
+            if (card is None or evaluation.score <= 0
                     or can_afford_play(state, card) is False):
                 continue
             if any(segment.produce_exam_effect is not None
                    and segment.produce_exam_effect.effect_type == ProduceExamEffectType.ExamLessonDependBlock
+                   and segment.produce_exam_effect.effect_value2 != 0
                    for segment in card.play_effects):
                 continue
             if any(
@@ -366,6 +368,7 @@ class PlannerStrategy(AbstractBattleStrategy):
                 for segment in card.play_effects
             ):
                 setup_scores.append(evaluation.score)
+                setup_ids.add(id(hand))
         if not setup_scores:
             return candidates
         best_setup = max(setup_scores)
@@ -375,7 +378,8 @@ class PlannerStrategy(AbstractBattleStrategy):
             (hand, replace(evaluation,
                            score=min(evaluation.score, best_setup - 1.0),
                            reason=f'{evaluation.reason}；干劲前中段优先积累元气/干劲'))
-            if evaluation.projected_output > 0 else (hand, evaluation)
+            if evaluation.projected_output > 0 and id(hand) not in setup_ids
+            else (hand, evaluation)
             for hand, evaluation in candidates
         ]
 
