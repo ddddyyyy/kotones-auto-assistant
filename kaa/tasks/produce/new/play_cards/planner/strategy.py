@@ -342,6 +342,25 @@ class PlannerStrategy(AbstractBattleStrategy):
             for _, evaluation in candidates
         ):
             return candidates
+        if (
+            not state.is_exam and state.remaining_turns == 4
+            and state.score_target_is_final is not None
+            and state.score_gap is not None and state.score_gap > 0
+            and any(
+                hand.card is not None
+                and 0 < conservative_target_output(evaluation.confirmed_output) < state.score_gap
+                and can_afford_play(state, hand.card) is True
+                and any(segment.produce_exam_effect is not None
+                        and segment.produce_exam_effect.effect_type
+                        == ProduceExamEffectType.ExamLessonDependBlock
+                        for segment in hand.card.play_effects)
+                for hand, evaluation in candidates
+            )
+        ):
+            # One visible conversion cannot meet the remaining goal. Near the
+            # deadline, preserve its current ranking rather than assume it
+            # will be drawn again after another preparation turn.
+            return candidates
         gains = {
             ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
             ProduceExamEffectType.ExamBlockAddMultipleAggressive,

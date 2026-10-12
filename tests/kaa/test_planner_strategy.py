@@ -1472,3 +1472,22 @@ def test_motivation_phase_retains_native_gain_on_mixed_output(monkeypatch, bound
     assert max(ranked, key=lambda pair: pair[1].score)[1].card_id == expected
     assert ranked[1][1].projected_output == 100
     assert ranked[1][1].confirmed_output == 0
+
+
+@pytest.mark.parametrize('boundary,preserve', [('deadline', True), ('early', False),
+    ('unknown_target', False), ('unconfirmed_output', False), ('exam', False)])
+def test_motivation_phase_preserves_needed_visible_conversion_near_lesson_deadline(boundary, preserve):
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    output = _planner_hand('output', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    rows = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 100, EvaluationConfidence.MEDIUM, 'output',
+                                    projected_output=48.4, confirmed_output=48.4))]
+    state = BattleState(remaining_turns=4, archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+                        hp=20, genki=44, score_gap=73, score_target_is_final=False)
+    if boundary == 'early': state = replace(state, remaining_turns=5)
+    elif boundary == 'unknown_target': state = replace(state, score_target_is_final=None)
+    elif boundary == 'exam': state = replace(state, is_exam=True)
+    elif boundary == 'unconfirmed_output': rows[1] = (output, replace(rows[1][1], confirmed_output=0))
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert (ranked == rows) is preserve
+    assert ranked[1][1].projected_output == 48.4
