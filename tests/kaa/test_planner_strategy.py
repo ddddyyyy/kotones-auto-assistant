@@ -1404,3 +1404,45 @@ def test_exam_finish_preserves_only_confirmed_extra_turn_window(monkeypatch, ver
     assert ranked[1][1].score == 8
     assert ranked[0][1].confirmed_output == 0
     assert state.observed_remaining_turns == 2
+
+
+@pytest.mark.parametrize('remaining,known,archetype,expected', [
+    (8, True, ProduceExamEffectType.ExamCardPlayAggressive, 'setup'),
+    (4, True, ProduceExamEffectType.ExamCardPlayAggressive, 'setup'),
+    (3, True, ProduceExamEffectType.ExamCardPlayAggressive, 'output'),
+    (1, True, ProduceExamEffectType.ExamCardPlayAggressive, 'output'),
+    (8, False, ProduceExamEffectType.ExamCardPlayAggressive, 'output'),
+    (8, True, ProduceExamEffectType.ExamReview, 'output'),
+])
+def test_motivation_setup_phase_keeps_deadline_and_unknown_window(remaining, known, archetype, expected):
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    output = _planner_hand('output', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    rows = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 100, EvaluationConfidence.MEDIUM, 'output',
+                                    projected_output=100, confirmed_output=0))]
+    state = BattleState(remaining_turns=remaining, remaining_turns_known=known,
+                        archetype=archetype, hp=20, genki=30)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert max(ranked, key=lambda pair: pair[1].score)[1].card_id == expected
+    assert ranked[1][1].projected_output == 100
+    assert ranked[1][1].confirmed_output == 0
+    assert len(ranked) == 2
+
+
+@pytest.mark.parametrize('boundary', ['no_setup', 'inactive', 'unaffordable', 'negative_setup', 'clear'])
+def test_motivation_setup_phase_keeps_safety_and_no_preparation_fallback(monkeypatch, boundary):
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamCardPlayAggressive, 4))
+    output = _planner_hand('output', _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000))
+    rows = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 100, EvaluationConfidence.MEDIUM, 'output',
+                                    projected_output=100, confirmed_output=100))]
+    state = BattleState(remaining_turns=8, archetype=ProduceExamEffectType.ExamCardPlayAggressive,
+                        hp=20, genki=30)
+    if boundary == 'no_setup': rows = rows[1:]
+    elif boundary == 'inactive':
+        from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+        monkeypatch.setattr(strategy_module, 'evaluate_trigger_id', lambda *_: TriggerVerdict.UNKNOWN)
+    elif boundary == 'unaffordable': setup.card.stamina = 100
+    elif boundary == 'negative_setup': rows[0] = (setup, replace(rows[0][1], score=-1))
+    else: state = replace(state, score_gap=100, score_target_is_final=False)
+    assert PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state) == rows

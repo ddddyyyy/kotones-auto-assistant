@@ -157,6 +157,7 @@ class PlannerStrategy(AbstractBattleStrategy):
                 )
             logger.info('Planner found no cards with sufficient observed resources; falling back.')
             return False
+        candidates = self._prefer_motivation_setup(candidates, state)
         candidates = self._protect_lesson_scoring_budget(candidates, state)
         candidates = self._protect_exam_finish(candidates, state)
         candidates = self._prefer_exam_catch_up_output(candidates, state)
@@ -324,6 +325,59 @@ class PlannerStrategy(AbstractBattleStrategy):
             )
         logger.info('Planner hold choices: %s', choices)
         return ranked
+
+    def _prefer_motivation_setup(
+        self,
+        candidates: list[tuple['CardGameObject', CardEvaluation]],
+        state: BattleState,
+    ) -> list[tuple['CardGameObject', CardEvaluation]]:
+        """Accumulate before the final three observed turns; never promise draws."""
+        if (
+            state.archetype != ProduceExamEffectType.ExamCardPlayAggressive
+            or not state.remaining_turns_known or state.remaining_turns <= 3
+        ):
+            return candidates
+        if not state.is_exam and state.score_gap is not None and any(
+            conservative_target_output(evaluation.confirmed_output) >= state.score_gap
+            for _, evaluation in candidates
+        ):
+            return candidates
+        gains = {
+            ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
+            ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+            ProduceExamEffectType.ExamCardPlayAggressive,
+        }
+        setup_scores = []
+        for hand, evaluation in candidates:
+            card = hand.card
+            if (card is None or evaluation.projected_output > 0 or evaluation.score <= 0
+                    or can_afford_play(state, card) is False):
+                continue
+            if any(segment.produce_exam_effect is not None
+                   and segment.produce_exam_effect.effect_type == ProduceExamEffectType.ExamLessonDependBlock
+                   for segment in card.play_effects):
+                continue
+            if any(
+                segment.produce_exam_effect is not None
+                and segment.produce_exam_effect.effect_type in gains
+                and (segment.produce_exam_effect.effect_value1 or 0) > 0
+                and evaluate_trigger_id(getattr(segment, '_produce_exam_trigger_id', ''), state)
+                == TriggerVerdict.ACTIVE
+                for segment in card.play_effects
+            ):
+                setup_scores.append(evaluation.score)
+        if not setup_scores:
+            return candidates
+        best_setup = max(setup_scores)
+        # Keep all candidates and their output estimates. Existing payment,
+        # CLEAR and deadline guards run afterwards and retain precedence.
+        return [
+            (hand, replace(evaluation,
+                           score=min(evaluation.score, best_setup - 1.0),
+                           reason=f'{evaluation.reason}；干劲前中段优先积累元气/干劲'))
+            if evaluation.projected_output > 0 else (hand, evaluation)
+            for hand, evaluation in candidates
+        ]
 
     def _protect_lesson_scoring_budget(
         self,
