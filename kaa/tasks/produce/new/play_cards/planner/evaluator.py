@@ -17,7 +17,7 @@ from kaa.db.produce_exam_auto import (
 from kaa.db.skill_card import ProduceExamEffect, SkillCard
 
 from .state import BattleState
-from .visible_output import current_preview_output
+from .visible_output import current_preview_output, is_single_genki_conversion
 from .profiles import profile_for
 from .costs import play_cost, projected_growth_output
 from .simulator import estimate_genki_gain, simulate_play, simulate_play_prefix
@@ -521,15 +521,27 @@ class EffectHeuristicEvaluator:
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('元气依赖参数')
+                consumption_budget = effect_state.genki if effect_state.genki_known else None
                 if (
-                    effect_state.genki_known
+                    consumption_budget is None and preview_output is not None
+                    and effect_index == 0 and value2 == 1000
+                    and is_single_genki_conversion(card)
+                    and state.genki_known and state.observed_genki == state.genki
+                ):
+                    # Payment uncertainty must not make full consumption free
+                    # in ranking. The current observed balance bounds the loss
+                    # for this single effect, not its actual post-payment spend.
+                    consumption_budget = state.genki
+                    reasons.append('未知支付后消费损失按当前观察上界估算')
+                if (
+                    consumption_budget is not None
                     and 0 < value2 <= 1000
                     and (turns > 1 or grants_extra_turn or has_followup_play())
                 ):
                     # Consumption is an option-cost estimate, not an exact
                     # post-play balance. Reuse defence's survival value; do
                     # not invent future draws or another conversion's output.
-                    spent_genki = max(0, effect_state.genki) * value2 / 1000.0
+                    spent_genki = max(0, consumption_budget) * value2 / 1000.0
                     score -= spent_genki * genki_survival_value(effect_state)
                     reasons.append('元气转换消耗后续生存价值')
             elif kind == ProduceExamEffectType.ExamMultipleEnthusiasticLesson:

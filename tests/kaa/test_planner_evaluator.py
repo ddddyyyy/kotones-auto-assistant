@@ -2268,3 +2268,26 @@ def test_single_conversion_preview_preserves_payment_and_consumption(consumption
     assert after.observed_card_output is None
     assert before == after
     assert after.genki == (0 if consumption else 149)
+
+
+@pytest.mark.parametrize('observed,remaining', [(96, 8), (None, 8), (96, 1)])
+def test_full_conversion_unknown_payment_prices_only_observed_loss_bound(observed, remaining):
+    from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play_prefix
+    effect = _single_conversion_effect()
+    effect.produce_exam_effect.effect_value1 = 4000
+    effect.produce_exam_effect.effect_value2 = 1000
+    card = cast(SkillCard, _card('convert', effect, cost=1))
+    state = BattleState(remaining_turns=remaining, hp=29, genki=96,
+        observed_genki=observed, is_exam=True, exam_score_percent=1635,
+        observed_effects=frozenset({'stamina_consumption_modifier'}),
+        observed_effect_values=(('stamina_consumption_modifier', None),),
+        observed_card_output=('convert', 1570, None))
+    assert simulate_play_prefix(state, card, 0).genki_known is False
+    evaluator = EffectHeuristicEvaluator()
+    unknown = evaluator.evaluate(card, replace(state, observed_genki=None))
+    result = evaluator.evaluate(card, state)
+    assert result.projected_output == unknown.projected_output == 1570
+    assert result.confirmed_output == unknown.confirmed_output == 0
+    expected_loss = 105.6 if observed is not None and remaining > 1 else 0
+    assert result.score == pytest.approx(unknown.score - expected_loss)
+    assert state.genki == 96

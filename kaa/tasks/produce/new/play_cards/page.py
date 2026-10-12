@@ -283,6 +283,28 @@ def _verify_genki_reading(crop: MatLike, value: int) -> int | None:
             verified = int(reading)
             logger.warning('Verified genki OCR %d as %d from same crop.', value, verified)
             return verified
+        if (
+            0 <= value <= 9 and len(reading) == 2
+            and reading.isascii() and reading.isdecimal()
+            and reading[0] != '0' and reading[1:] == raw
+        ):
+            # Otsu can lose one leading digit. Verify its complete value on
+            # both current color and white crops; never prepend a guessed digit.
+            ok, encoded = cv2.imencode('.png', crop)
+            color_text = _dddd().classification(encoded.tobytes()) if ok else None
+            if isinstance(color_text, str) and re.findall(r'\d+', color_text) == [reading]:
+                minimum = crop.min(axis=2)
+                white = ((minimum > 245) & (
+                    crop.max(axis=2).astype('int16') - minimum < 12
+                )).astype('uint8') * 255
+                verified = en().ocr(white)
+                ok, encoded = cv2.imencode('.png', white)
+                if (
+                    len(verified) == 1 and verified[0].confidence >= 0.98
+                    and verified[0].text == reading and ok
+                    and _dddd().classification(encoded.tobytes()) == reading
+                ):
+                    return int(reading)
         if 1 <= value <= 99 and reading == raw + '0':
             # Otsu can drop the outlined trailing zero. Recover only when
             # the original color classifier and high-confidence independent
