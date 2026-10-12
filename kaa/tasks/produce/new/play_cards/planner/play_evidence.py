@@ -29,6 +29,8 @@ class PlayFeedbackEvidence:
     def __init__(self, directory: Path):
         self.directory = directory
         self.saved_count = 0
+        self.ordinary_saved_count = 0
+        self._pending_terminal = False
         self.pending: tuple[str, str, MatLike, MatLike | None] | None = None
 
     @classmethod
@@ -36,9 +38,11 @@ class PlayFeedbackEvidence:
         directory = os.environ.get(EVIDENCE_ENV)
         return cls(Path(directory)) if directory else None
 
-    def before_commit(self, card_id: str, screen: MatLike) -> None:
+    def before_commit(self, card_id: str, screen: MatLike, *, terminal: bool = False) -> None:
         self.pending = None
-        if self.saved_count < 8:
+        self._pending_terminal = terminal
+        # Reserve two of the eight bundles for observed last-turn requests.
+        if self.saved_count < 8 and (terminal or self.ordinary_saved_count < 6):
             self.pending = (uuid4().hex, card_id, screen.copy(), None)
 
     def after_commit(self) -> None:
@@ -54,9 +58,12 @@ class PlayFeedbackEvidence:
 
     def feedback(self, evidence: str, screen: MatLike | None) -> None:
         pending, self.pending = self.pending, None
+        terminal, self._pending_terminal = self._pending_terminal, False
         if pending is None or evidence not in UNCONFIRMED_EVIDENCE:
             return
         self.saved_count += 1
+        if not terminal:
+            self.ordinary_saved_count += 1
         token, card_id, before, after = pending
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
@@ -71,6 +78,7 @@ class PlayFeedbackEvidence:
             Path(f'{prefix}.json').write_text(
                 json.dumps({
                     'card_id': card_id,
+                    'observed_terminal_request': terminal,
                     'evidence': evidence,
                     'after_click_captured': after is not None,
                     'feedback_captured': screen is not None,

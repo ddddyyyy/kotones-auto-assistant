@@ -231,7 +231,10 @@ class PlannerStrategy(AbstractBattleStrategy):
         )
         memory_before_play = deepcopy(self._memory)
         if self._play_evidence is not None:
-            self._play_evidence.before_commit(best.card_id, best_card._screenshot)
+            self._play_evidence.before_commit(
+                best.card_id, best_card._screenshot,
+                terminal=state.remaining_turns_known and state.remaining_turns <= 1,
+            )
         ctx.commit(best_card)
         if self._play_evidence is not None:
             self._play_evidence.after_commit()
