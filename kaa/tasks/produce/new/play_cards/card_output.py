@@ -12,10 +12,14 @@ class CardOutputPreview(NamedTuple):
     count: int | None
 
 
-def _integer_read(image: MatLike) -> int | None:
-    results = en().ocr(image)
+def _integer_read(image: MatLike, *, left_header: bool = False) -> int | None:
+    # Supplying an explicit full-image rect makes original_rect remove the
+    # OCR backend's padding; rect itself remains in padded coordinates.
+    results = (en().ocr(image, rect=Rect(0, 0, image.shape[1], image.shape[0]))
+               if left_header else en().ocr(image))
     if (len(results) == 1 and results[0].confidence >= 0.98
-            and results[0].text.isascii() and results[0].text.isdecimal()):
+            and results[0].text.isascii() and results[0].text.isdecimal()
+            and (not left_header or results[0].original_rect.x1 <= image.shape[1] / 3)):
         return int(results[0].text)
     return None
 
@@ -35,8 +39,29 @@ def read_card_output_preview(
     crop = screen[y1:y2, x1:x2]
     try:
         amount = _integer_read(crop)
+        if amount is None and not wide_header:
+            return None
         white = (crop.min(axis=2) > 230).astype('uint8') * 255
-        if amount is None or _integer_read(white) != amount:
+        masked_amount = _integer_read(white)
+        if amount is None or masked_amount != amount:
+            # A colored attribute icon can merge with a short header at its
+            # native size. Keep one complete native numeric anchor and require
+            # both enlargements of the other representation to agree with it.
+            # Require left-header geometry to exclude right-hand fee badges.
+            # Two confident conflicting native numbers remain unknown.
+            if not wide_header or (amount is None) == (masked_amount is None):
+                return None
+            anchor = masked_amount if amount is None else amount
+            native = white if amount is None else crop
+            if _integer_read(native, left_header=True) != anchor:
+                return None
+            unresolved = crop if amount is None else white
+            enlarged = [_integer_read(cv2.resize(unresolved, None, fx=scale, fy=scale), left_header=True)
+                        for scale in (2, 3)]
+            if enlarged != [anchor, anchor]:
+                return None
+            amount = anchor
+        if amount is None:
             return None
         # The hit-count bubble is neutral gray; the output banner is colored.
         low, high = crop.min(axis=2), crop.max(axis=2)
