@@ -30,6 +30,7 @@ _ACTIVE_PRODUCE_SCENES = {
     SceneType.PRACTICE_RESULT,
     SceneType.EXAM,
     SceneType.EXAM_RESULT,
+    SceneType.EXAM_INTRO,
     SceneType.STUDY,
     SceneType.OUTING,
     SceneType.CONSULT,

@@ -71,6 +71,9 @@ class SceneType(Enum):
     EXAM_RESULT = auto()
     """考试名次页，沿既有考试收尾流程继续"""
 
+    EXAM_INTRO = auto()
+    """考试审查标准介绍，沿既有跳过流程进入考试"""
+
 
 @dataclass
 class Scene:

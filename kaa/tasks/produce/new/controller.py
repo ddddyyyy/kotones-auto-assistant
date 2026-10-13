@@ -202,6 +202,9 @@ class ProduceController:
             case SceneType.PRODUCE_END:
                 ctx = ProduceEndContext(self.page, self)
                 self.strategy.on_produce_end(ctx)
+            case SceneType.EXAM_INTRO:
+                skip()
+                logger.info("Advancing exam judging intro.")
             case SceneType.IDLE | SceneType.PRACTICE_RESULT:
                 skip()
                 logger.info("Idle state. Doing nothing.")
