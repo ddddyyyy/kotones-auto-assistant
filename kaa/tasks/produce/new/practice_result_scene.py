@@ -19,16 +19,41 @@ def is_practice_result_screen(screen: MatLike) -> bool:
         return False
     if max(r.rect.center.y for r in limits) - min(r.rect.center.y for r in limits) > min(r.rect.h for r in limits) / 2:
         return False
+    if len(limits) == 2:
+        # Re-read a separated numeric box on the same gauge baseline. Require
+        # the crop itself to contain the full slash-prefixed denominator;
+        # matching neighbouring limits alone must not repair a missing slash.
+        recovered = []
+        height, width = screen.shape[:2]
+        for result in results:
+            if (result.confidence < 0.8
+                    or re.fullmatch(r'\d{3,6}', result.text.strip()) is None
+                    or any(abs(result.rect.center.y - limit.rect.center.y)
+                           > min(result.rect.h, limit.rect.h) / 2 for limit in limits)
+                    or any(max(result.rect.x1 - limit.rect.x2,
+                               limit.rect.x1 - result.rect.x2)
+                           < min(result.rect.w, limit.rect.w) for limit in limits)):
+                continue
+            padding = max(1, result.rect.h // 4)
+            crop = screen[max(0, result.rect.y1 - padding):min(height, result.rect.y2 + padding),
+                          max(0, result.rect.x1 - padding):min(width, result.rect.x2 + padding)]
+            readings = jp().ocr(crop)
+            if (len(readings) == 1 and readings[0].confidence >= 0.98
+                    and readings[0].text.strip() == limits[0].text.strip()):
+                recovered.append(result)
+        if len(recovered) == 1:
+            limits.append(recovered[0])
+            limits.sort(key=lambda r: r.rect.center.x)
     if any(b.rect.x1 - a.rect.x2 < min(a.rect.w, b.rect.w)
            for a, b in zip(limits, limits[1:])):
         return False
     summaries = []
     for result in results:
-        match = re.search(r'(Vo|Da|Vi)\.が\d+上昇した[!！]?',
+        match = re.search(r'(V[o0]|Da|Vi)\.が\d+上昇した[!！]?',
                           unicodedata.normalize('NFKC', result.text))
         if (result.confidence >= 0.8 and match is not None
                 and result.rect.y1 > max(limit.rect.y2 for limit in limits)):
-            summaries.append((result, match.group(1)))
+            summaries.append((result, match.group(1).replace("V0", "Vo")))
     if len(limits) == 2:
         if any(r.confidence >= 0.98 and r.text.strip().upper() == 'UP!'
                    and r.rect.y2 < min(limit.rect.y1 for limit in limits)
@@ -46,7 +71,7 @@ def is_practice_result_screen(screen: MatLike) -> bool:
                     for (a, _), (b, _) in zip(summaries, summaries[1:]))
         )
     return any(r.confidence >= 0.8
-               and re.search(r'(?:Vo|Da|Vi)\.が\d+上昇した[!！]?',
+               and re.search(r'(?:V[o0]|Da|Vi)\.が\d+上昇した[!！]?',
                              unicodedata.normalize('NFKC', r.text))
                and r.rect.y1 > max(limit.rect.y2 for limit in limits)
                for r in results)
