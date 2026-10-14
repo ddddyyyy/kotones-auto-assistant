@@ -24,6 +24,26 @@ def _integer_read(image: MatLike, *, left_header: bool = False) -> int | None:
     return None
 
 
+def _short_wide_consensus(crop: MatLike, white: MatLike, anchor: int) -> bool:
+    """Confirm a short full-width anchor without accepting a clipped prefix."""
+    if not 0 <= anchor < 100:
+        return False
+    # The full-width original must also read the entire anchor. This weaker
+    # reading is only a consistency check, never the accepted numeric vote.
+    results = en().ocr(crop)
+    if (len(results) != 1 or results[0].confidence < 0.9
+            or results[0].text != str(anchor)):
+        return False
+    # Preserve the full-width native anchor above. Compact crops alone can
+    # truncate a four-digit preview and must never recover a missing anchor.
+    center = crop.shape[1] // 2
+    compact = [image[:, center - 58:center + 75] for image in (crop, white)]
+    return all(
+        _integer_read(image if scale == 1 else cv2.resize(image, None, fx=scale, fy=scale)) == anchor
+        for image in compact for scale in (1, 2, 3)
+    )
+
+
 def read_card_output_preview(
     screen: MatLike, letter: Rect, *, wide_header: bool = False,
 ) -> CardOutputPreview | None:
@@ -59,7 +79,11 @@ def read_card_output_preview(
             enlarged = [_integer_read(cv2.resize(unresolved, None, fx=scale, fy=scale), left_header=True)
                         for scale in (2, 3)]
             if enlarged != [anchor, anchor]:
-                return None
+                # A conflicting complete enlarged number stays unknown.
+                if (any(value is not None and value != anchor for value in enlarged)
+                        or anchor is None
+                        or not _short_wide_consensus(crop, white, anchor)):
+                    return None
             amount = anchor
         if amount is None:
             return None
