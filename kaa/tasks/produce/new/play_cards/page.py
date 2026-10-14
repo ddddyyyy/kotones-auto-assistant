@@ -370,6 +370,48 @@ def _fetch_int(
     return nums[0]
 
 
+
+def _read_score_gap(screen: MatLike) -> int | None:
+    """Verify colored goal digits on this crop, never from earlier targets."""
+    box = BOX_SCORE_GAP
+    crop = screen[box.y1:box.y2, box.x1:box.x2]
+    if crop.size == 0 or crop.ndim != 3:
+        return None
+    try:
+        spread = crop.max(axis=2).astype('int16') - crop.min(axis=2)
+        variants = [crop] + [
+            ((spread > threshold) & (crop.max(axis=2) > 150)).astype('uint8') * 255
+            for threshold in (50, 80)
+        ]
+        confident_values: set[int] = set()
+        votes: list[int] = []
+        for image in variants:
+            results = en().ocr(image)
+            confident_values.update(
+                int(result.text.strip()) for result in results
+                if result.confidence >= 0.98
+                and re.fullmatch(r'0|[1-9][0-9]{0,3}', result.text.strip())
+            )
+            ok, encoded = cv2.imencode('.png', image)
+            if not ok:
+                return None
+            text = _dddd().classification(encoded.tobytes())
+            if (isinstance(text, str)
+                    and re.fullmatch(r'0|[1-9][0-9]{0,3}', text)
+                    and len(results) == 1 and results[0].confidence >= 0.98
+                    and results[0].text.strip() == text):
+                votes.append(int(text))
+        # At least two representations must have complete dual-engine votes.
+        # A malformed third representation does not invent a digit, while
+        # any confident numeric conflict still invalidates the observation.
+        if len(votes) < 2 or len(set(votes)) != 1 or confident_values - {votes[0]}:
+            return None
+        return votes[0]
+    except Exception:
+        logger.debug('Could not verify lesson target gap.', exc_info=True)
+    return None
+
+
 def _fetch_remaining_turns(screen: MatLike | None = None) -> int | None:
     """Read both sides of the turn badge to avoid losing a leading digit.
 
@@ -496,7 +538,7 @@ class LessonBattleContext:
 
         考试界面没有中央目标圆环，此时 OCR 会自然返回 ``None``。
         """
-        return _fetch_int(BOX_SCORE_GAP, screen=self.fetch_screen())
+        return _read_score_gap(self.fetch_screen())
 
     @_observe_once
     def fetch_score_target_is_final(self) -> bool | None:
