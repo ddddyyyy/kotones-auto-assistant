@@ -148,11 +148,11 @@ def observe_effect_icons(screen: MatLike) -> list[EffectIconObservation]:
                 )[:, :, 1].mean() < 30:
                     continue
                 if effect == 'lesson_value_down':
-                    # Calibrated red decrease diamonds have saturation ~160;
-                    # reject blue/grey arrows without guessing their amount.
+                    # Active decrease diamonds also use orange-red (hue 12).
+                    # Keep the saturation/coverage checks to reject grey or blue.
                     hsv = cv2.cvtColor(icon, cv2.COLOR_BGR2HSV)
                     active_red = (
-                        ((hsv[:, :, 0] <= 10) | (hsv[:, :, 0] >= 170))
+                        ((hsv[:, :, 0] <= 12) | (hsv[:, :, 0] >= 170))
                         & (hsv[:, :, 1] >= 120) & (hsv[:, :, 2] >= 150)
                     )
                     if active_red.mean() < 0.15:
