@@ -54,6 +54,7 @@ class PlannerStrategy(AbstractBattleStrategy):
         self._memory = BattleMemory()
         self._is_exam = is_exam
         self._last_move_state: BattleState | None = None
+        self._turn_refresh_used = False
         self._pending_play: PendingPlay | None = None
         self._memory_before_pending_play: BattleMemory | None = None
         self._play_evidence = PlayFeedbackEvidence.from_environment()
@@ -125,6 +126,15 @@ class PlannerStrategy(AbstractBattleStrategy):
             self._pending_play = None
             self._memory_before_pending_play = None
         self._last_move_state = state
+        if self._should_refresh_turn_observation(state):
+            if self._decision_trace is not None:
+                self._decision_trace.screening(
+                    observed_hands, state, [], [], [], 'awaiting_turn_confirmation',
+                )
+            logger.info('Planner awaiting one fresh observation of the turn-count jump.')
+            # Handled without a commit: the battle loop takes a new screenshot
+            # and builds a new context instead of clicking a recommendation.
+            return True
         candidate_states = {
             id(hand): self._candidate_state(state, hand)
             for hand in hands if hand.card is not None
@@ -249,6 +259,18 @@ class PlannerStrategy(AbstractBattleStrategy):
             )
             self._memory.record_play(best_card.card, state)
             self._last_move_state = simulate_play(state, best_card.card)
+        return True
+
+    def _should_refresh_turn_observation(self, state: BattleState) -> bool:
+        """Wait once for a numeric jump; never promote an uncertain horizon."""
+        if state.remaining_turns_known:
+            self._turn_refresh_used = False
+            return False
+        observed = state.observed_remaining_turns
+        if (type(observed) is not int or not 1 <= observed <= 30
+                or self._turn_refresh_used):
+            return False
+        self._turn_refresh_used = True
         return True
 
     @override

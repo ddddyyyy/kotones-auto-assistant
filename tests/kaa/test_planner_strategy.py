@@ -1657,3 +1657,28 @@ def test_exam_preview_exception_does_not_transfer_between_same_id_copies():
     assert max(ranked, key=lambda pair: pair[1].score)[0] is setup
     assert ranked[2][1].projected_output == 749
     assert ranked[2][1].confirmed_output == 0
+
+
+@pytest.mark.parametrize('observed', [1, 5, 12, 30])
+def test_numeric_turn_jump_waits_once_until_known_observation(observed):
+    strategy = PlannerStrategy()
+    unknown = BattleState(remaining_turns=1, remaining_turns_known=False,
+                          observed_remaining_turns=observed, hp=10, genki=10)
+    assert strategy._should_refresh_turn_observation(unknown)
+    assert not strategy._should_refresh_turn_observation(unknown)
+    # Different uncertain readings cannot keep resetting the wait budget.
+    assert not strategy._should_refresh_turn_observation(
+        replace(unknown, observed_remaining_turns=6))
+    assert not unknown.remaining_turns_known and unknown.remaining_turns == 1
+    known = replace(unknown, remaining_turns=observed, remaining_turns_known=True)
+    assert not strategy._should_refresh_turn_observation(known)
+    assert strategy._should_refresh_turn_observation(unknown)
+
+
+@pytest.mark.parametrize('observed', [None, 0, -1, 31, True, 5.0])
+def test_missing_or_invalid_turn_reading_does_not_defer(observed):
+    strategy = PlannerStrategy()
+    state = BattleState(remaining_turns=1, remaining_turns_known=False,
+                        observed_remaining_turns=observed, hp=10, genki=10)
+    assert not strategy._should_refresh_turn_observation(state)
+    assert not strategy._turn_refresh_used
