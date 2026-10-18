@@ -747,7 +747,9 @@ class EffectHeuristicEvaluator:
         """Do not certify output from stale or invalidated search multipliers."""
         # This visible percentage is not calibrated with other multipliers
         # or game rounding. Presence preserves ranking, but proves no output.
-        if {'lesson_value_up', 'lesson_value_down'} & state.observed_effects:
+        if {'lesson_value_up', 'lesson_value_down'} & (
+            state.observed_effects | dict(state.effect_values_for_planning).keys()
+        ):
             return False
         if state.projected_full_power_uncertain:
             return False
@@ -788,6 +790,19 @@ class EffectHeuristicEvaluator:
             if state.is_exam and state.exam_score_percent is not None
             and state.exam_score_percent >= 0 else 1.0
         )
+        # A verified display percentage improves ranking only. Its combined
+        # rounding and duration are not calibrated, so it never certifies output.
+        percentages = {'lesson_value_up', 'lesson_value_down'}
+        values = dict(state.effect_values_for_planning)
+        present = percentages & (state.observed_effects | values.keys())
+        if len(present) == 1:
+            effect = next(iter(present))
+            percent = values.get(effect)
+            if type(percent) is int and 0 <= percent <= 999:
+                multiplier *= (
+                    1.0 + percent / 100.0 if effect == 'lesson_value_up'
+                    else max(0.0, 1.0 - percent / 100.0)
+                )
         if EffectHeuristicEvaluator._pride_active(state):
             # Master-data description: 2% per smaller review/aggressive point,
             # capped at 50%. Keep fractions; global rounding order is unverified.

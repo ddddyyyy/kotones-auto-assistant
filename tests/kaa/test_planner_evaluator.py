@@ -2169,7 +2169,10 @@ def test_visible_score_percent_never_certifies_uncalibrated_output(kind, exam, a
     decrease = replace(state, observed_effects=frozenset({arrow}),
                        observed_effect_values=((arrow, percent),))
     result = evaluator.evaluate(cast(Any, card), decrease)
-    assert result.projected_output == reference.projected_output
+    factor = (1.0 if percent is None else
+              1.0 + percent / 100 if arrow == 'lesson_value_up' else
+              max(0.0, 1.0 - percent / 100))
+    assert result.projected_output == pytest.approx(reference.projected_output * factor)
     assert reference.confirmed_output > 0
     assert result.confirmed_output == 0
     from kaa.tasks.produce.new.play_cards.planner.simulator import simulate_play
@@ -2291,3 +2294,62 @@ def test_full_conversion_unknown_payment_prices_only_observed_loss_bound(observe
     expected_loss = 105.6 if observed is not None and remaining > 1 else 0
     assert result.score == pytest.approx(unknown.score - expected_loss)
     assert state.genki == 96
+
+
+@pytest.mark.parametrize('kind', [ProduceExamEffectType.ExamLessonValueMultiple,
+                                 ProduceExamEffectType.ExamLessonValueMultipleDown])
+@pytest.mark.parametrize('verdict', [TriggerVerdict.ACTIVE, TriggerVerdict.UNKNOWN,
+                                    TriggerVerdict.INACTIVE])
+def test_possible_percent_change_invalidates_old_ranking_amount(monkeypatch, kind, verdict):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    state = BattleState(remaining_turns=3, hp=20, genki=50,
+                        observed_effects=frozenset({'lesson_value_up'}),
+                        observed_effect_values=(('lesson_value_up', 20),))
+    future = simulator.simulate_play(state, cast(Any, _card('percent', _effect(kind, 100))))
+    values = dict(future.effect_values_for_planning)
+    if verdict == TriggerVerdict.INACTIVE:
+        assert values['lesson_value_up'] == 20
+        assert EffectHeuristicEvaluator._output_multiplier(future) == pytest.approx(1.2)
+    else:
+        assert values['lesson_value_up'] is values['lesson_value_down'] is None
+        assert EffectHeuristicEvaluator._output_multiplier(future) == 1
+    assert not EffectHeuristicEvaluator._output_multiplier_known(future)
+    assert dict(state.observed_effect_values) == {'lesson_value_up': 20}
+
+
+@pytest.mark.parametrize('values', [
+    (('lesson_value_up', None),), (('lesson_value_up', -1),),
+    (('lesson_value_up', True),), (('lesson_value_up', 1000),),
+    (('lesson_value_up', 20), ('lesson_value_down', 10)),
+])
+def test_unusable_percent_does_not_invent_ranking_multiplier(values):
+    state = BattleState(remaining_turns=3, hp=20, genki=50, observed_effect_values=values)
+    assert EffectHeuristicEvaluator._output_multiplier(state) == 1
+    assert not EffectHeuristicEvaluator._output_multiplier_known(state)
+
+
+@pytest.mark.parametrize('kind', [ProduceExamEffectType.ExamLessonValueMultiple,
+                                 ProduceExamEffectType.ExamLessonValueMultipleDown])
+@pytest.mark.parametrize('verdict', [TriggerVerdict.ACTIVE, TriggerVerdict.UNKNOWN])
+def test_new_unmodeled_percent_cannot_certify_followup_output(monkeypatch, kind, verdict):
+    from kaa.tasks.produce.new.play_cards.planner import simulator
+    monkeypatch.setattr(simulator, 'evaluate_trigger_id', lambda *_: verdict)
+    state = BattleState(remaining_turns=3, hp=20, genki=50)
+    future = simulator.simulate_play(state, cast(Any, _card('percent', _effect(kind, 100))))
+    assert not future.observed_effects
+    assert not EffectHeuristicEvaluator._output_multiplier_known(future)
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, _card(
+        'output', _effect(ProduceExamEffectType.ExamLesson, 10))), future)
+    assert result.projected_output == 10
+    assert result.confirmed_output == 0
+
+
+def test_percent_change_only_invalidates_later_scoring_segments():
+    card = _card('sequence', _effect(ProduceExamEffectType.ExamLesson, 10),
+                 _effect(ProduceExamEffectType.ExamLessonValueMultiple, 100),
+                 _effect(ProduceExamEffectType.ExamLesson, 10))
+    result = EffectHeuristicEvaluator().evaluate(cast(Any, card),
+        BattleState(remaining_turns=3, hp=20, genki=50))
+    assert result.projected_output == 20
+    assert result.confirmed_output == 10

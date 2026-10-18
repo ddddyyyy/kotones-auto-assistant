@@ -161,6 +161,7 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         memory.anomaly.extra_play_count - state.anomaly.extra_play_count
     )
 
+    percentage_uncertain = False
     extra_turns = 0
     turns_known = state.remaining_turns_known
     stance_uncertain = state.projected_stance_uncertain
@@ -306,6 +307,13 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
             elif pride is not True:
                 pride = None
         if verdict != TriggerVerdict.INACTIVE:
+            if effect.effect_type in {
+                ProduceExamEffectType.ExamLessonValueMultiple,
+                ProduceExamEffectType.ExamLessonValueMultipleDown,
+            }:
+                # Do not reuse a current HUD amount after a possible change;
+                # stacking, replacement and expiry have not been calibrated.
+                percentage_uncertain = True
             if effect.effect_type in _RESOURCE_GAIN_MODIFIERS:
                 gain_modifiers.add(_RESOURCE_GAIN_MODIFIERS[effect.effect_type])
             if (
@@ -435,6 +443,8 @@ def simulate_play(state: BattleState, card: SkillCard) -> BattleState:
         )
 
     projected_values = dict(state.effect_values_for_planning)
+    if percentage_uncertain:
+        projected_values.update(lesson_value_up=None, lesson_value_down=None)
     if pride is not False or 'pride' in projected_values:
         projected_values['pride'] = None if pride is None else int(pride)
     balances = {
