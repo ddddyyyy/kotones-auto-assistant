@@ -222,9 +222,58 @@ def _digit_ocr():
     return ddddocr.DdddOcr(show_ad=False)
 
 
+def _percent_groups(white: MatLike, *, gap: int = 0) -> list[list[int]]:
+    _, _, stats, _ = cv2.connectedComponentsWithStats(white)
+    spans = sorted((int(x), int(x + width))
+                   for x, _, width, height, area in stats[1:]
+                   if area >= 3 and height >= 2)
+    groups: list[list[int]] = []
+    for left, right in spans:
+        if groups and left <= groups[-1][1] + gap:
+            groups[-1][1] = max(groups[-1][1], right)
+        else:
+            groups.append([left, right])
+    return groups
+
+
+def _percent_digits(
+    crop: MatLike, white: MatLike, groups: list[list[int]], expected: str,
+) -> tuple[int | None, bool]:
+    """Verify intact digits; report conflicting reads to stop recovery."""
+    from kotonebot.backend.ocr import en
+
+    left = max(0, groups[0][0] - 2)
+    right = min(crop.shape[1], groups[-2][1] + 2)
+    complete = True
+    for image in (crop, white):
+        digits = cv2.resize(image[:, left:right], None, fx=3, fy=3,
+                            interpolation=cv2.INTER_CUBIC)
+        digits = cv2.copyMakeBorder(digits, 4, 4, 4, 4, cv2.BORDER_CONSTANT,
+                                   value=(0, 0, 0))
+        ok, encoded = cv2.imencode('.png', digits)
+        if not ok:
+            return None, False
+        classified = _digit_ocr().classification(encoded.tobytes())
+        results = en().ocr(digits)
+        if (isinstance(classified, str) and re.fullmatch(r'[0-9]+', classified)
+                and classified != expected):
+            return None, True
+        if any(result.confidence >= 0.98 and result.text != expected for result in results):
+            return None, True
+        complete &= (classified == expected and len(results) == 1
+                     and results[0].confidence >= 0.98 and results[0].text == expected)
+    return (int(expected) if complete else None), False
+
+
 def _read_effect_percent(screen: MatLike, icon_x: int, icon_y: int) -> int | None:
     """Observe percentage text; this does not calibrate its scoring semantics."""
     from kotonebot.backend.ocr import en
+
+    def white_digits(crop: MatLike) -> MatLike:
+        minimum = crop.min(axis=2)
+        return ((minimum > 230) & (
+            crop.max(axis=2).astype('int16') - minimum < 20
+        )).astype('uint8') * 255
 
     crop = screen[icon_y + 24:icon_y + 52, icon_x + 31:icon_x + 125]
     if crop.size == 0 or crop.ndim != 3:
@@ -237,43 +286,38 @@ def _read_effect_percent(screen: MatLike, icon_x: int, icon_y: int) -> int | Non
         if match is None:
             return None
         expected = match[1]
-        minimum = crop.min(axis=2)
-        white = ((minimum > 230) & (
-            crop.max(axis=2).astype('int16') - minimum < 20
-        )).astype('uint8') * 255
+        white = white_digits(crop)
         masked = en().ocr(white)
-        if any(result.confidence >= 0.98 and result.text != original[0].text
-               for result in masked):
+        if any(result.confidence >= 0.98 and result.text != original[0].text for result in masked):
             return None
-        # Isolate complete digit glyphs before the percentage glyph. Do not
-        # remove classifier suffixes or substitute characters in its text.
-        _, _, stats, _ = cv2.connectedComponentsWithStats(white)
-        spans = sorted((int(x), int(x + width))
-                       for x, _, width, height, area in stats[1:]
-                       if area >= 3 and height >= 2)
-        groups: list[list[int]] = []
-        for left, right in spans:
-            if groups and left <= groups[-1][1]:
-                groups[-1][1] = max(groups[-1][1], right)
-            else:
-                groups.append([left, right])
-        if len(groups) != len(expected) + 1:
-            return None
-        left = max(0, groups[0][0] - 2)
-        right = min(crop.shape[1], groups[-2][1] + 2)
-        for image in (crop, white):
-            digits = cv2.resize(image[:, left:right], None, fx=3, fy=3,
-                                interpolation=cv2.INTER_CUBIC)
-            digits = cv2.copyMakeBorder(digits, 4, 4, 4, 4, cv2.BORDER_CONSTANT,
-                                       value=(0, 0, 0))
-            ok, encoded = cv2.imencode('.png', digits)
-            if not ok or _digit_ocr().classification(encoded.tobytes()) != expected:
+        groups = _percent_groups(white)
+        if len(groups) == len(expected) + 1:
+            return _percent_digits(crop, white, groups, expected)[0]
+        # Preserve every left-edge fragment. Extend the original crop instead
+        # of dropping a component that might be a clipped leading digit.
+        for padding in (2, 4, 6, 8):
+            extended = screen[icon_y + 24:icon_y + 52,
+                              max(0, icon_x + 31 - padding):icon_x + 125]
+            extended_white = white_digits(extended)
+            reads = en().ocr(extended)
+            masked = en().ocr(extended_white)
+            if any(result.confidence >= 0.98 and result.text != original[0].text
+                   for result in [*reads, *masked]):
                 return None
-            results = en().ocr(digits)
-            if (len(results) != 1 or results[0].confidence < 0.98
-                    or results[0].text != expected):
+            if (len(reads) != 1 or reads[0].confidence < 0.98
+                    or reads[0].text != original[0].text):
+                continue
+            # One-pixel gaps may split a glyph's disconnected stroke. Merging
+            # spans discards no pixels; the whole percentage must still agree.
+            groups = _percent_groups(extended_white, gap=1)
+            if len(groups) != len(expected) + 1:
+                continue
+            value, conflict = _percent_digits(extended, extended_white, groups, expected)
+            if conflict:
                 return None
-        return int(expected)
+            if value is not None:
+                return value
+        return None
     except Exception:
         return None
 
