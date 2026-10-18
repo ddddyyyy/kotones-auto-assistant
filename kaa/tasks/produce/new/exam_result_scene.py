@@ -8,7 +8,7 @@ from kotonebot.backend.ocr import jp
 def is_exam_result_screen(screen: MatLike) -> bool:
     results = jp().ocr(screen)
     scores = [r for r in results if r.confidence >= 0.9
-              and re.fullmatch(r'\d{1,3}(?:,\d{3})*Pt', r.text.strip())]
+              and re.fullmatch(r'\d{1,3}(?:,\d{3})*(?:Pt|pt)', r.text.strip())]
     if len(scores) < 3:
         return False
     # The ranking score rows form a column; isolated battle score badges do not.
