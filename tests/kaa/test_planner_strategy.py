@@ -1491,3 +1491,83 @@ def test_motivation_phase_preserves_needed_visible_conversion_near_lesson_deadli
     ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
     assert (ranked == rows) is preserve
     assert ranked[1][1].projected_output == 48.4
+
+
+def _late_motivation_candidates():
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 11),
+                          _effect(ProduceExamEffectType.ExamCardPlayAggressive, 7),
+                          _effect(ProduceExamEffectType.ExamStaminaConsumptionAdd, 0))
+    for segment in setup.card.play_effects:
+        segment.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    output = _planner_hand('output', _effect(ProduceExamEffectType.ExamLesson, 9), stamina=4)
+    candidates = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+                  (output, CardEvaluation('output', 10, EvaluationConfidence.HIGH, 'output', 9, 9))]
+    state = BattleState(remaining_turns=2, hp=21, genki=43, hand_size=2,
+                        score_gap=39, score_target_is_final=False,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    return candidates, state
+
+
+@pytest.mark.parametrize('turns', [1, 2])
+def test_motivation_late_clear_keeps_visible_output_over_surplus_setup(turns):
+    candidates, state = _late_motivation_candidates()
+    ranked = PlannerStrategy()._prefer_lesson_finish_progress(cast(Any, candidates),
+                                                            replace(state, remaining_turns=turns))
+    assert max(ranked, key=lambda x: x[1].score)[0] is candidates[1][0]
+    assert '无可见转换' in ranked[0][1].reason
+    assert [(h, ev.projected_output, ev.confirmed_output) for h, ev in ranked] == [
+        (h, ev.projected_output, ev.confirmed_output) for h, ev in candidates]
+    assert candidates[0][1].score == 20
+
+
+@pytest.mark.parametrize('changes', [
+    {'is_exam': True}, {'score_target_is_final': True}, {'score_target_is_final': None},
+    {'score_gap': None}, {'score_gap': 0}, {'remaining_turns': 3},
+    {'remaining_turns_known': False}, {'hp_known': False}, {'hp': 8},
+    {'genki_known': False}, {'genki': 10}, {'playable_count': 2},
+    {'hand_size': None}, {'hand_size': 3}, {'archetype': None},
+    {'projected_effect_values': ()}, {'unresolved_growth_card_ids': frozenset({'setup'})},
+])
+def test_late_motivation_protection_requires_complete_safe_current_input(changes):
+    candidates, state = _late_motivation_candidates()
+    ranked = PlannerStrategy()._protect_motivation_lesson_finish(cast(Any, candidates),
+                                                               replace(state, **changes))
+    assert ranked == candidates
+
+
+@pytest.mark.parametrize('kind', [ProduceExamEffectType.ExamLessonDependBlock,
+                                 ProduceExamEffectType.ExamCardDraw,
+                                 ProduceExamEffectType.ExamPlayableValueAdd,
+                                 ProduceExamEffectType.ExamExtraTurn,
+                                 ProduceExamEffectType.ExamReview])
+def test_late_motivation_protection_keeps_conversion_and_other_opportunities(kind):
+    candidates, state = _late_motivation_candidates()
+    candidates[0][0].card.play_effects.append(_effect(kind, 1))
+    assert PlannerStrategy()._protect_motivation_lesson_finish(cast(Any, candidates), state) == candidates
+
+
+@pytest.mark.parametrize('affordable', [None, False])
+def test_late_motivation_protection_requires_payable_independent_output(monkeypatch, affordable):
+    candidates, state = _late_motivation_candidates()
+    monkeypatch.setattr(strategy_module, 'can_afford_play',
+                        lambda _state, card: affordable if card._id == 'output' else True)
+    assert PlannerStrategy()._protect_motivation_lesson_finish(cast(Any, candidates), state) == candidates
+
+
+@pytest.mark.parametrize('boundary', ['unknown_trigger', 'inactive_trigger', 'unknown_growth',
+                                      'chain', 'mixed_output', 'uncertain_output'])
+def test_late_motivation_protection_preserves_unresolved_or_mixed_candidates(monkeypatch, boundary):
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    candidates, state = _late_motivation_candidates()
+    if boundary.endswith('trigger'):
+        verdict = TriggerVerdict.UNKNOWN if boundary == 'unknown_trigger' else TriggerVerdict.INACTIVE
+        monkeypatch.setattr(strategy_module, 'evaluate_trigger_id', lambda *_: verdict)
+    elif boundary == 'unknown_growth':
+        candidates[0][0].card.play_effects[0].produce_exam_effect._produce_card_grow_effect_ids = None
+    elif boundary == 'chain':
+        candidates[0][0].card.play_effects[0].produce_exam_effect._chain_produce_exam_effect_id = 'chain'
+    elif boundary == 'mixed_output':
+        candidates[0] = (candidates[0][0], replace(candidates[0][1], projected_output=1))
+    else:
+        candidates[1] = (candidates[1][0], replace(candidates[1][1], confirmed_output=0))
+    assert PlannerStrategy()._protect_motivation_lesson_finish(cast(Any, candidates), state) == candidates

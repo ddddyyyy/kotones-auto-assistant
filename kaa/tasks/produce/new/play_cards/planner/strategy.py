@@ -585,6 +585,77 @@ class PlannerStrategy(AbstractBattleStrategy):
                 score=evaluation.score + bonus,
                 reason=f'{evaluation.reason}；课程末段确定产分',
             )))
+        return self._protect_motivation_lesson_finish(ranked, state)
+
+    def _protect_motivation_lesson_finish(
+        self,
+        candidates: list[tuple['CardGameObject', CardEvaluation]],
+        state: BattleState,
+    ) -> list[tuple['CardGameObject', CardEvaluation]]:
+        """Cash in visible output instead of surplus setup before CLEAR expires."""
+        if (
+            state.is_exam or state.score_target_is_final is not False
+            or state.score_gap is None or state.score_gap <= 0
+            or state.archetype != ProduceExamEffectType.ExamCardPlayAggressive
+            or not state.remaining_turns_known or not 1 <= state.remaining_turns <= 2
+            or state.projected_effect_values is not None
+            or not state.hp_known or state.hp <= 8
+            or not state.genki_known or state.genki <= 10
+            or state.playable_count != 1
+            # Missing, unavailable or filtered hands may hide a conversion.
+            or state.hand_size is None or state.hand_size != len(candidates)
+            or any(hand.card is None for hand, _ in candidates)
+        ):
+            return candidates
+        if any(
+            effect.produce_exam_effect is not None
+            and effect.produce_exam_effect.effect_type == ProduceExamEffectType.ExamLessonDependBlock
+            for hand, _ in candidates if hand.card is not None
+            for effect in hand.card.play_effects
+        ):
+            return candidates
+        scorers = [
+            evaluation.score for hand, evaluation in candidates
+            if hand.card is not None and evaluation.confirmed_output > 0
+            and can_afford_play(state, hand.card) is True
+        ]
+        if not scorers:
+            return candidates
+        best_scorer = max(scorers)
+        gains = {
+            ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
+            ProduceExamEffectType.ExamBlockAddMultipleAggressive,
+            ProduceExamEffectType.ExamCardPlayAggressive,
+        }
+        ranked: list[tuple[CardGameObject, CardEvaluation]] = []
+        for hand, evaluation in candidates:
+            card = hand.card
+            effects = card.play_effects if card is not None else ()
+            plain_setup = bool(effects) and all(
+                segment.produce_exam_effect is not None
+                and segment.produce_exam_effect.effect_type in gains | {
+                    ProduceExamEffectType.ExamStaminaConsumptionAdd,
+                }
+                and getattr(segment.produce_exam_effect, '_produce_card_grow_effect_ids', None) == '[]'
+                and not getattr(segment.produce_exam_effect, 'chain_effect_ids', ())
+                and not getattr(segment.produce_exam_effect, '_chain_produce_exam_effect_id', '')
+                and evaluate_trigger_id(getattr(segment, '_produce_exam_trigger_id', ''), state)
+                == TriggerVerdict.ACTIVE
+                for segment in effects
+            )
+            if (
+                card is not None and plain_setup
+                and card._id not in state.unresolved_growth_card_ids
+                and not state.projected_card_growth
+                and evaluation.projected_output == 0 and evaluation.confirmed_output == 0
+                and evaluation.score >= best_scorer
+                and can_afford_play(state, card) is True
+            ):
+                evaluation = replace(
+                    evaluation, score=best_scorer - 1.0,
+                    reason=f'{evaluation.reason}；干劲课程末段无可见转换时优先当前确定产分',
+                )
+            ranked.append((hand, evaluation))
         return ranked
 
     def _prefer_exam_catch_up_output(
