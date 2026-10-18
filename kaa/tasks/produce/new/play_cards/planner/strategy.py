@@ -27,7 +27,7 @@ from .profiles import profile_for
 from .simulator import can_afford_play, play_cost, simulate_play
 from .state import BattleState
 from .trigger import TriggerVerdict, evaluate_trigger_id
-from .visible_output import supports_current_preview, is_single_genki_conversion
+from .visible_output import supports_current_preview, is_single_genki_conversion, current_preview_output
 
 if TYPE_CHECKING:
     from kaa.db.skill_card import SkillCard
@@ -364,6 +364,27 @@ class PlannerStrategy(AbstractBattleStrategy):
             # deadline, preserve its current ranking rather than assume it
             # will be drawn again after another preparation turn.
             return candidates
+        if (
+            state.is_exam and state.remaining_turns == 4 and state.playable_count == 1
+            and state.projected_effect_values is None and state.observed_card_output is None
+            and state.hp_known and state.hp > 8 and state.genki_known and state.genki > 0
+        ):
+            for hand, evaluation in candidates:
+                card = hand.card
+                if (card is None or not is_single_genki_conversion(card)
+                        or evaluation.projected_output <= 0
+                        or can_afford_play(state, card) is False
+                        or evaluate_trigger_id(
+                            getattr(card, '_play_produce_exam_trigger_id', '') or '', state,
+                        ) != TriggerVerdict.ACTIVE):
+                    continue
+                preview = current_preview_output(card, self._candidate_state(state, hand))
+                if preview is not None and preview > 0 and evaluation.projected_output == preview:
+                    # Preserve the existing ranking for this observed chance;
+                    # the same copy is not promised to return before the exam.
+                    # Unknown payment and hit count remain unknown. This only
+                    # skips phase suppression, never forces the conversion.
+                    return candidates
         gains = {
             ProduceExamEffectType.ExamBlock, ProduceExamEffectType.ExamBlockFix,
             ProduceExamEffectType.ExamBlockAddMultipleAggressive,

@@ -1571,3 +1571,89 @@ def test_late_motivation_protection_preserves_unresolved_or_mixed_candidates(mon
     else:
         candidates[1] = (candidates[1][0], replace(candidates[1][1], confirmed_output=0))
     assert PlannerStrategy()._protect_motivation_lesson_finish(cast(Any, candidates), state) == candidates
+
+
+@pytest.mark.parametrize('payment', [True, None])
+@pytest.mark.parametrize('count', [None, 1])
+def test_exam_four_turn_visible_conversion_keeps_ranking_not_payment_proof(monkeypatch, payment, count):
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000)
+    effect.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    output = _planner_hand('output', effect, force_stamina=5)
+    output.wide_output_preview = SimpleNamespace(per_hit=749, count=count)
+    rows = [(setup, CardEvaluation('setup', 4.4, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 100, EvaluationConfidence.MEDIUM, 'preview', 749, 0))]
+    state = BattleState(remaining_turns=4, hp=28, genki=88, is_exam=True,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    monkeypatch.setattr(strategy_module, 'can_afford_play', lambda *_: payment)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert ranked is rows
+    assert ranked[1][1].confirmed_output == 0
+    assert output.wide_output_preview.count is count
+    assert state.observed_card_output is None
+
+
+@pytest.mark.parametrize('boundary', ['early', 'unknown_turns', 'lesson', 'extra_play',
+    'low_hp', 'unknown_hp', 'unknown_genki', 'zero_genki', 'projection', 'shared_preview',
+    'no_preview', 'zero_preview', 'repeat_preview', 'mismatch', 'growth', 'unknown_growth',
+    'partial_consumption', 'chain', 'unaffordable', 'unknown_use', 'inactive_use'])
+def test_exam_conversion_preview_exception_stays_narrow(monkeypatch, boundary):
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000)
+    effect.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    output = _planner_hand('output', effect)
+    output.wide_output_preview = SimpleNamespace(per_hit=749, count=None)
+    rows = [(setup, CardEvaluation('setup', 4.4, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 100, EvaluationConfidence.MEDIUM, 'preview', 749, 0))]
+    state = BattleState(remaining_turns=4, hp=28, genki=88, is_exam=True,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    if boundary == 'early': state = replace(state, remaining_turns=5)
+    elif boundary == 'unknown_turns': state = replace(state, remaining_turns_known=False)
+    elif boundary == 'lesson': state = replace(state, is_exam=False)
+    elif boundary == 'extra_play': state = replace(state, playable_count=2)
+    elif boundary == 'low_hp': state = replace(state, hp=8)
+    elif boundary == 'unknown_hp': state = replace(state, hp_known=False)
+    elif boundary == 'unknown_genki': state = replace(state, genki_known=False)
+    elif boundary == 'zero_genki': state = replace(state, genki=0)
+    elif boundary == 'projection': state = replace(state, projected_effect_values=())
+    elif boundary == 'shared_preview': state = replace(state, observed_card_output=('output', 749, None))
+    elif boundary == 'no_preview': output.wide_output_preview = None
+    elif boundary == 'zero_preview': output.wide_output_preview.per_hit = 0
+    elif boundary == 'repeat_preview': output.wide_output_preview.count = 2
+    elif boundary == 'mismatch': rows[1] = (output, replace(rows[1][1], projected_output=748))
+    elif boundary == 'growth': output.has_growth_marker = True
+    elif boundary == 'unknown_growth': effect.produce_exam_effect._produce_card_grow_effect_ids = None
+    elif boundary == 'partial_consumption': effect.produce_exam_effect.effect_value2 = 500
+    elif boundary == 'chain': effect.produce_exam_effect._chain_produce_exam_effect_id = 'chain'
+    elif boundary == 'unaffordable':
+        monkeypatch.setattr(strategy_module, 'can_afford_play',
+                            lambda _, card: False if card._id == 'output' else True)
+    elif boundary in {'unknown_use', 'inactive_use'}:
+        output.card._play_produce_exam_trigger_id = 'use'
+        monkeypatch.setattr(strategy_module, 'evaluate_trigger_id',
+            lambda trigger, _: (TriggerVerdict.UNKNOWN if boundary == 'unknown_use' else TriggerVerdict.INACTIVE)
+            if trigger == 'use' else TriggerVerdict.ACTIVE)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert max(ranked, key=lambda pair: pair[1].score)[1].card_id == ('output' if boundary == 'unknown_turns' else 'setup')
+    assert ranked[1][1].confirmed_output == 0
+
+
+
+def test_exam_preview_exception_does_not_transfer_between_same_id_copies():
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 1000)
+    effect.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    with_preview = _planner_hand('duplicate', effect)
+    without_preview = _planner_hand('duplicate', effect)
+    with_preview.wide_output_preview = SimpleNamespace(per_hit=749, count=None)
+    without_preview.wide_output_preview = None
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    rows = [(setup, CardEvaluation('setup', 4.4, EvaluationConfidence.MEDIUM, 'setup')),
+            (with_preview, CardEvaluation('duplicate', 0, EvaluationConfidence.LOW, 'other copy')),
+            (without_preview, CardEvaluation('duplicate', 100, EvaluationConfidence.LOW, 'no preview', 749, 0))]
+    state = BattleState(remaining_turns=4, hp=28, genki=88, is_exam=True,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert max(ranked, key=lambda pair: pair[1].score)[0] is setup
+    assert ranked[2][1].projected_output == 749
+    assert ranked[2][1].confirmed_output == 0
