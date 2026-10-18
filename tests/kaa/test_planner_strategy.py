@@ -1682,3 +1682,37 @@ def test_missing_or_invalid_turn_reading_does_not_defer(observed):
                         observed_remaining_turns=observed, hp=10, genki=10)
     assert not strategy._should_refresh_turn_observation(state)
     assert not strategy._turn_refresh_used
+
+
+@pytest.mark.parametrize('genki,known,expected', [(40, True, 'setup'),
+    (20, True, 'output'), (40, False, 'output')])
+def test_motivation_setup_requires_active_card_usage(genki, known, expected):
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    setup.card._play_produce_exam_trigger_id = 'e_trigger-none-block_up-30'
+    output = _planner_hand('output', _effect(ProduceExamEffectType.ExamLesson, 50))
+    rows = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 50, EvaluationConfidence.MEDIUM, 'output',
+                                    projected_output=50, confirmed_output=50))]
+    state = BattleState(remaining_turns=8, hp=20, genki=genki, genki_known=known,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert max(ranked, key=lambda p: p[1].score)[1].card_id == expected
+    assert ranked[0] == rows[0]  # The candidate is retained, not made playable.
+    assert ranked[1][1].projected_output == 50 and ranked[1][1].confirmed_output == 50
+    assert rows[1][1].score == 50
+
+
+@pytest.mark.parametrize('usage', ['', 'e_trigger-none-block_up-30'])
+def test_motivation_mixed_setup_usage_controls_phase_exemption(usage):
+    mixed = _planner_hand('mixed', _effect(ProduceExamEffectType.ExamBlock, 8),
+                          _effect(ProduceExamEffectType.ExamLessonDependBlock, 800))
+    mixed.card._play_produce_exam_trigger_id = usage
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    rows = [(setup, CardEvaluation('setup', 20, EvaluationConfidence.MEDIUM, 'setup')),
+            (mixed, CardEvaluation('mixed', 100, EvaluationConfidence.MEDIUM, 'mixed',
+                                   projected_output=50, confirmed_output=0))]
+    state = BattleState(remaining_turns=8, hp=20, genki=10, genki_known=False,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    assert ranked[1][1].score == (100 if not usage else 19)
+    assert ranked[1][1].confirmed_output == 0 and ranked[1][1].projected_output == 50

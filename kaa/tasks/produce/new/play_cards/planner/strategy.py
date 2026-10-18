@@ -417,7 +417,10 @@ class PlannerStrategy(AbstractBattleStrategy):
         for hand, evaluation in candidates:
             card = hand.card
             if (card is None or evaluation.score <= 0
-                    or can_afford_play(state, card) is False):
+                    or can_afford_play(state, card) is False
+                    or evaluate_trigger_id(
+                        getattr(card, '_play_produce_exam_trigger_id', '') or '', state,
+                    ) != TriggerVerdict.ACTIVE):
                 continue
             if any(segment.produce_exam_effect is not None
                    and segment.produce_exam_effect.effect_type == ProduceExamEffectType.ExamLessonDependBlock
