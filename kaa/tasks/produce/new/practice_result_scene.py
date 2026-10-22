@@ -70,8 +70,24 @@ def is_practice_result_screen(screen: MatLike) -> bool:
             and all(a.rect.y2 <= b.rect.y1
                     for (a, _), (b, _) in zip(summaries, summaries[1:]))
         )
-    return any(r.confidence >= 0.8
-               and re.search(r'(?:V[o0]|Da|Vi)\.が\d+上昇した[!！]?',
-                             unicodedata.normalize('NFKC', r.text))
-               and r.rect.y1 > max(limit.rect.y2 for limit in limits)
-               for r in results)
+    if summaries:
+        return True
+    # With all three aligned gauges established, re-read only a dedicated
+    # summary whose parameter label failed in the full-screen OCR. Keep its
+    # original suffix and position as gates; never repair text or read gains.
+    height, width = screen.shape[:2]
+    for result in results:
+        text = unicodedata.normalize('NFKC', result.text)
+        if (result.confidence < 0.8
+                or result.rect.y1 <= max(limit.rect.y2 for limit in limits)
+                or re.search(r'\.が\d+上昇した[!！]?', text) is None):
+            continue
+        padding = max(1, result.rect.h // 4)
+        crop = screen[max(0, result.rect.y1 - padding):min(height, result.rect.y2 + padding),
+                      max(0, result.rect.x1 - padding):min(width, result.rect.x2 + padding)]
+        readings = jp().ocr(crop)
+        if (len(readings) == 1 and readings[0].confidence >= 0.8
+                and re.search(r'(?:V[o0]|Da|Vi)\.が\d+上昇した[!！]?',
+                              unicodedata.normalize('NFKC', readings[0].text))):
+            return True
+    return False
