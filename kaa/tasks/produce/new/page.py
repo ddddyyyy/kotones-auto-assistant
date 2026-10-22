@@ -202,12 +202,12 @@ class _SceneCheckMixin:
 
         # P道具选择
         logger.verbose("Check PItem select...")
-        if R.InProduce.TextPItem.exists() or self._is_selected_pitem_reward():
+        if R.InProduce.TextPItem.exists():
             return Scene(SceneType.SELECT_PITEM)
 
         # P饮料选择
         logger.verbose("Check PDrink select...")
-        if R.InProduce.TextPDrink.exists():
+        if R.InProduce.TextPDrink.exists() or self._is_selected_drink_reward():
             # HACK: 有一定概率 scene check 会识别到动画未结束状态的对话框
             # 因此这里加一个短暂的延时，确保动画结束
             # TODO: 也许有更好的方法。此时选择饮料的文本提示已存在，选择按钮也存在，
@@ -216,6 +216,19 @@ class _SceneCheckMixin:
             sleep(0.3)
             device.screenshot()
             return Scene(SceneType.SELECT_DRINK)
+
+        if self._is_selected_pitem_reward():
+            return Scene(SceneType.SELECT_PITEM)
+
+    def _is_selected_drink_reward(self) -> bool:
+        """Selected drinks retain their dedicated skip control and icon row."""
+        screen = device.screenshot()
+        if find_template(screen, R.InProduce.TextDontClaim.template, threshold=0.95) is None:
+            return False
+        return len(find_all_templates(
+            screen, R.InProduce.PItemRewardBorder.template,
+            rect=R.InProduce.BoxPItemRewardIcons, threshold=0.95, colored=True,
+        )) >= 2
 
     def _is_selected_pitem_reward(self) -> bool:
         """选中道具后提示文字消失，以同帧的道具边框和领取按钮确认页面。"""
@@ -564,6 +577,11 @@ class PItemSelectContext(Context):
         if index < 0 or index >= len(positions):
             raise ValueError(f"Invalid PItem index: {index}")
         for _ in Loop():
+            # Acquiring a P item can immediately open a drink reward. Let
+            # its context handle skipping instead of clicking the old index.
+            if R.InProduce.TextPDrink.exists() or self.page._is_selected_drink_reward():
+                logger.debug("PItem claim advanced to drink selection.")
+                return
             device.click(positions[index])
             btn = R.InProduce.AcquireBtnDisabled.find()
             if btn:
