@@ -1716,3 +1716,47 @@ def test_motivation_mixed_setup_usage_controls_phase_exemption(usage):
     ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
     assert ranked[1][1].score == (100 if not usage else 19)
     assert ranked[1][1].confirmed_output == 0 and ranked[1][1].projected_output == 50
+
+
+@pytest.mark.parametrize('boundary', ['confirmed', 'unknown_payment', 'unaffordable',
+    'unconfirmed_output', 'partial_confirmed', 'consumption', 'unknown_growth',
+    'repeated', 'chain', 'unknown_use', 'unknown_effect', 'early', 'extra_play',
+    'low_hp', 'unknown_genki', 'unresolved_growth'])
+def test_exam_four_turn_confirmed_conversion_with_delayed_draw(monkeypatch, boundary):
+    from kaa.tasks.produce.new.play_cards.planner.trigger import TriggerVerdict
+    effect = _effect(ProduceExamEffectType.ExamLessonDependBlock, 1100)
+    effect.produce_exam_effect._produce_card_grow_effect_ids = '[]'
+    delayed = _effect(ProduceExamEffectType.ExamEffectTimer, 1)
+    delayed.produce_exam_effect._chain_produce_exam_effect_id = 'draw'
+    output = _planner_hand('output', effect, delayed)
+    setup = _planner_hand('setup', _effect(ProduceExamEffectType.ExamBlock, 8))
+    rows = [(setup, CardEvaluation('setup', 12, EvaluationConfidence.MEDIUM, 'setup')),
+            (output, CardEvaluation('output', 550, EvaluationConfidence.MEDIUM, 'known', 6080, 6080))]
+    state = BattleState(remaining_turns=4, hp=18, genki=309, is_exam=True,
+                        archetype=ProduceExamEffectType.ExamCardPlayAggressive)
+    payment = True
+    if boundary == 'unknown_payment': payment = None
+    elif boundary == 'unaffordable': payment = False
+    elif boundary == 'unconfirmed_output': rows[1] = (output, replace(rows[1][1], confirmed_output=0))
+    elif boundary == 'partial_confirmed': rows[1] = (output, replace(rows[1][1], confirmed_output=3000))
+    elif boundary == 'consumption': effect.produce_exam_effect.effect_value2 = 1000
+    elif boundary == 'unknown_growth': effect.produce_exam_effect._produce_card_grow_effect_ids = None
+    elif boundary == 'repeated': effect.produce_exam_effect.effect_count = 2
+    elif boundary == 'chain': effect.produce_exam_effect._chain_produce_exam_effect_id = 'chain'
+    elif boundary == 'unknown_use': output.card._play_produce_exam_trigger_id = 'uncertain'
+    elif boundary == 'unknown_effect': effect._produce_exam_trigger_id = 'uncertain'
+    elif boundary == 'early': state = replace(state, remaining_turns=5)
+    elif boundary == 'extra_play': state = replace(state, playable_count=2)
+    elif boundary == 'low_hp': state = replace(state, hp=8)
+    elif boundary == 'unknown_genki': state = replace(state, genki_known=False)
+    elif boundary == 'unresolved_growth': state = replace(state, unresolved_growth_card_ids=('output',))
+    monkeypatch.setattr(strategy_module, 'can_afford_play',
+                        lambda _state, card: payment if card is output.card else True)
+    monkeypatch.setattr(strategy_module, 'evaluate_trigger_id',
+                        lambda trigger, _state: TriggerVerdict.UNKNOWN if trigger == 'uncertain' else TriggerVerdict.ACTIVE)
+    ranked = PlannerStrategy()._prefer_motivation_setup(cast(Any, rows), state)
+    selected = max(ranked, key=lambda pair: pair[1].score)[0]
+    assert selected is (output if boundary == 'confirmed' else setup)
+    assert [(e.projected_output, e.confirmed_output) for _, e in ranked] == [
+        (e.projected_output, e.confirmed_output) for _, e in rows]
+    assert state.observed_card_output is None

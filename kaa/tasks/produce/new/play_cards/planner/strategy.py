@@ -393,6 +393,34 @@ class PlannerStrategy(AbstractBattleStrategy):
         ):
             for hand, evaluation in candidates:
                 card = hand.card
+                # A confirmed immediate non-consuming conversion can have an
+                # auxiliary effect (for example a delayed draw). Preserve its
+                # current chance without promising that draw or another copy.
+                if (card is not None
+                        and evaluation.confirmed_output == evaluation.projected_output > 0
+                        and can_afford_play(state, card) is True
+                        and card._id not in state.unresolved_growth_card_ids
+                        and not state.projected_card_growth
+                        and evaluate_trigger_id(
+                            getattr(card, '_play_produce_exam_trigger_id', '') or '', state,
+                        ) == TriggerVerdict.ACTIVE):
+                    conversions = [segment for segment in card.play_effects
+                                   if segment.produce_exam_effect is not None
+                                   and segment.produce_exam_effect.effect_type
+                                   == ProduceExamEffectType.ExamLessonDependBlock]
+                    if len(conversions) == 1:
+                        segment = conversions[0]
+                        effect = segment.produce_exam_effect
+                        if (effect is not None and (effect.effect_value1 or 0) > 0
+                                and effect.effect_value2 == 0
+                                and effect.effect_count in {0, 1}
+                                and getattr(effect, '_produce_card_grow_effect_ids', None) == '[]'
+                                and not getattr(effect, '_chain_produce_exam_effect_id', '')
+                                and not getattr(effect, 'chain_effect_ids', ())
+                                and evaluate_trigger_id(
+                                    getattr(segment, '_produce_exam_trigger_id', ''), state,
+                                ) == TriggerVerdict.ACTIVE):
+                            return candidates
                 if (card is None or not is_single_genki_conversion(card)
                         or evaluation.projected_output <= 0
                         or can_afford_play(state, card) is False
