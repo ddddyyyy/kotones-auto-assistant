@@ -517,6 +517,25 @@ def test_exam_passes_confirmed_standings_to_planner(monkeypatch):
     assert state.score_gap is None
 
 
+def test_explicit_archetype_does_not_require_produce_session_or_invent_rank_three_score(monkeypatch):
+    def forbidden():
+        raise AssertionError('explicit archetype must not access ProduceSession')
+    monkeypatch.setattr(strategy_module,'produce_session',forbidden)
+    ctx=FakeContext([_hand('card')])
+    setattr(ctx,'fetch_exam_standings',lambda: SimpleNamespace(own_score=100,leader_score=900,own_is_leader=False))
+    strategy=PlannerStrategy(FakeEvaluator({'card':1}),is_exam=True,
+        archetype=ProduceExamEffectType.ExamLessonBuff,rank_at_most=3)
+    state=strategy._build_observed_state(cast(Any,ctx),cast(Any,ctx.hands))
+    assert state.archetype==ProduceExamEffectType.ExamLessonBuff and state.plan_type==ProducePlanType.Plan1
+    assert state.rank_at_most==3 and state.target_score is None and state.current_score==100
+
+
+@pytest.mark.parametrize('rank',[0,7,True,None])
+def test_explicit_rank_goal_rejects_invalid_inputs(rank):
+    with pytest.raises(ValueError):
+        PlannerStrategy(rank_at_most=rank)
+
+
 def test_exam_leader_has_no_overtake_target(monkeypatch):
     monkeypatch.setattr(strategy_module, 'produce_session', lambda: None)
     ctx = FakeContext([_hand('card')])
@@ -1068,6 +1087,36 @@ def test_ranked_planner_uses_its_own_turn_reader(is_exam, expected):
     planner = PlannerStrategy(is_exam=is_exam)
     state = planner._build_observed_state(cast(Any, ctx), [])
     assert state.observed_remaining_turns == expected
+
+
+@pytest.mark.parametrize('value,expected',[(11000,11000),(0,0),(None,None),(True,None),(-1,None)])
+def test_mode_own_score_is_independent_of_unreadable_leader(value,expected):
+    class Context(FakeContext):
+        def fetch_exam_standings(self):
+            return None
+        def fetch_exam_current_score(self):
+            return value
+    state=PlannerStrategy(is_exam=True)._build_observed_state(cast(Any,Context([])),[])
+    assert state.current_score==expected and state.target_score is None
+
+
+def test_adapter_unknown_score_does_not_fall_back_to_legacy_zero():
+    class Context(FakeContext):
+        def fetch_exam_standings(self):
+            return SimpleNamespace(own_score=0,leader_score=100,own_is_leader=False)
+        def fetch_exam_current_score(self):
+            return None
+    state=PlannerStrategy(is_exam=True)._build_observed_state(cast(Any,Context([])),[])
+    assert state.current_score is None
+
+
+@pytest.mark.parametrize('value,expected',[(53,53),(None,None),(0,None),(True,None),(1,None)])
+def test_optional_adapter_maximum_hp_is_never_guessed(value,expected):
+    class Context(FakeContext):
+        def fetch_exam_max_hp(self):
+            return value
+    state=PlannerStrategy(is_exam=True)._build_observed_state(cast(Any,Context([])),[])
+    assert state.max_hp==expected
 
 
 @pytest.mark.parametrize('mode, reason', [

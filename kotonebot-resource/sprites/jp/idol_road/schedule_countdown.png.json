@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+ "schedule-countdown":{"name":"IdolRoad.BoxBattleScheduleCountdown","type":"hint-box","props":{"image":{"kind":"rect","x1":96,"y1":162,"x2":253,"y2":194}}},
+ "schedule-countdown-suffix":{"name":"IdolRoad.BattleScheduleCountdownSuffix","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":121,"y1":170,"x2":203,"y2":194}}}
+}}

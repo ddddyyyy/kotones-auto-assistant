@@ -1,4 +1,4 @@
-from typing import Callable, NamedTuple, Literal
+from typing import Callable, NamedTuple, Literal, TYPE_CHECKING
 import time
 
 import cv2
@@ -29,6 +29,9 @@ from kotonebot.core import AnyOf
 from kotonebot.backend.color import find as find_color
 from kotonebot.backend.image import find as find_template
 from kotonebot.backend.image import find_all as find_all_templates
+
+if TYPE_CHECKING:
+    from kaa.tasks.produce.new.play_cards.page import LessonBattleContext
 
 class SkillCard(NamedTuple):
     available: bool
@@ -298,6 +301,20 @@ def calc_card_position(card_count: int):
         raise ValueError(f'不支持 {card_count} 张手牌')
     return result
 
+def invoke_battle_strategy(strategy: AbstractBattleStrategy,ctx: 'LessonBattleContext',*,allow_recommended_fallback: bool) -> bool:
+    """A policy stop is terminal even for callers that permit ordinary recommendation fallback."""
+    from kaa.tasks.produce.new.play_cards.planner.selection_policy import SelectionPolicyStop
+    try:
+        return bool(strategy.on_action(ctx))
+    except SelectionPolicyStop:
+        raise
+    except Exception:
+        if not allow_recommended_fallback:
+            raise
+        logger.exception('Battle strategy execution failed, fallback to recommended card detection.')
+        return False
+
+
 @action('打牌', screenshot_mode='manual')
 def do_cards(
         is_exam: bool,
@@ -306,6 +323,11 @@ def do_cards(
         *,
         battle_strategy: AbstractBattleStrategy | None = None,
         result_observer: Callable[[MatLike], None] | None = None,
+        enable_drink: bool | None = None,
+        allow_recommended_fallback: bool = True,
+        frame_policy: Callable[[MatLike], Literal['continue','wait','stop']] | None = None,
+        turn_end_handler: Callable[[MatLike], bool] | None = None,
+        battle_context_factory: Callable[[MatLike], 'LessonBattleContext'] | None = None,
     ):
     """
     循环打出推荐卡，直到考试/练习结束
@@ -326,7 +348,14 @@ def do_cards(
     timeout_card_id = 1 # timeout时，选择的卡的编号
                         # 每次选择后会自增；若成功打出，则重置为1；如果全不无法选中，那么预测系统应该会选择空过本回合，不用考虑
 
-    enable_drink: bool = is_exam # 避免耦合
+    enable_drink = is_exam if enable_drink is None else enable_drink
+    strategy_misses = 0
+    if not allow_recommended_fallback and battle_strategy is None:
+        raise ValueError('Strict card execution requires a battle strategy')
+    if frame_policy is not None and result_observer is None:
+        raise ValueError('Guarded execution requires animation observation')
+    if turn_end_handler is not None and frame_policy is None:
+        raise ValueError('Turn-end handling requires a current-frame guard')
     drinks_list: list[tuple[Drink, RectTuple]] | None = None
     drink_selected_idx: int = -1 # 此索引指向drinks_list
     drink_retries = 0
@@ -350,14 +379,16 @@ def do_cards(
     def try_battle_strategy(screen: MatLike) -> bool:
         if battle_strategy is None:
             return False
+        from kaa.tasks.produce.new.play_cards.planner.selection_policy import SelectionPolicyStop
         try:
             from kaa.tasks.produce.new.play_cards.page import LessonBattleContext
-            ctx = LessonBattleContext(screen)
-            handled = battle_strategy.on_action(ctx)
-            if not handled:
-                return False
-            return True
+            ctx = battle_context_factory(screen) if battle_context_factory is not None else LessonBattleContext(screen)
+            return invoke_battle_strategy(battle_strategy,ctx,allow_recommended_fallback=allow_recommended_fallback)
+        except SelectionPolicyStop:
+            raise
         except Exception:
+            if not allow_recommended_fallback:
+                raise
             logger.exception('Battle strategy execution failed, fallback to recommended card detection.')
             return False
 
@@ -367,15 +398,27 @@ def do_cards(
         if result_observer is None:
             skip()
         img = device.screenshot()
+        if frame_policy is not None:
+            policy=frame_policy(img)
+            if policy=='stop':
+                return
+            if policy=='wait':
+                continue
+            if policy!='continue':
+                raise ValueError('Unknown frame policy for card execution')
 
         # 技能卡自选移动对话框
         if R.InProduce.IconTitleSkillCardMove.exists():
             if handle_skill_card_move(battle_strategy):
                 sleep(4)  # 等待卡片刷新
                 continue
+            if not allow_recommended_fallback:
+                raise ValueError('Planner could not handle the card-move dialog')
         # 饮品详细对话框（需要在 ButtonIconCheckMark 之前，因为ButtonUse也是√）
         drink_use_button = find_drink_use_button(img)
         if drink_use_button is not None:
+            if not enable_drink and not allow_recommended_fallback:
+                raise ValueError('Unexpected drink dialog during strict card execution')
             device.click(drink_use_button)
             if enable_drink:
                 if drinks_list is None or not 0 <= drink_selected_idx < len(drinks_list):
@@ -460,6 +503,17 @@ def do_cards(
             logger.debug("Current card count: %d", card_count)
         # 处理手牌
         if card_count == 0:
+            if turn_end_handler is not None and turn_end_handler(img):
+                strategy_misses = 0
+                finish_card_animation()
+                card_count = -1
+                timeout_cd.reset()
+                continue
+            if not allow_recommended_fallback:
+                strategy_misses += 1
+                if strategy_misses>=3:
+                    raise ValueError('Empty hand could not be confirmed after three observations')
+                continue
             # 处理本回合已无剩余手牌的情况
             # TODO: 使用模板匹配而不是 OCR，提升速度
             no_card_cd.start()
@@ -478,10 +532,22 @@ def do_cards(
                     continue
         else:
             if try_battle_strategy(img):
+                strategy_misses = 0
                 logger.info("Handle battle strategy success with %d tries", tries)
                 finish_card_animation()
                 tries = 0
                 timeout_cd.reset()
+                continue
+            if turn_end_handler is not None and turn_end_handler(img):
+                strategy_misses = 0
+                finish_card_animation()
+                card_count = -1
+                timeout_cd.reset()
+                continue
+            if not allow_recommended_fallback:
+                strategy_misses += 1
+                if strategy_misses>=3:
+                    raise ValueError('Planner could not choose a card after three observations')
                 continue
             if handle_recommended_card(
                 card_count=card_count,
@@ -497,6 +563,8 @@ def do_cards(
                 tries += 1
         # 检测超时（防止一直卡在检测）
         if timeout_cd.expired():
+            if not allow_recommended_fallback:
+                raise ValueError('Strict planner card execution timed out')
             if card_count == 0:
                 logger.warning("Recommend card detection timeout but no card found.")
                 timeout_cd.reset()

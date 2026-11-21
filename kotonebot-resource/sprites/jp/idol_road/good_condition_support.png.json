@@ -1,0 +1,3 @@
+{"version":3,"definitions":{
+ "positive-good-condition-support":{"name":"IdolRoad.GoodConditionPositiveSupport","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":58,"y1":718,"x2":150,"y2":810}}}
+}}

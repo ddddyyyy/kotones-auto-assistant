@@ -1,0 +1,8 @@
+{"version":3,"definitions":{
+ "road-resume-title":{"name":"IdolRoad.ResumePromptTitle","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":54,"y1":846,"x2":358,"y2":880}}},
+ "road-resume-purpose":{"name":"IdolRoad.ResumePromptPurpose","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":51,"y1":927,"x2":443,"y2":994}}},
+ "road-resume-warning":{"name":"IdolRoad.ResumePromptWarning","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":51,"y1":1007,"x2":642,"y2":1071}}},
+ "road-resume-button":{"name":"IdolRoad.ResumePromptOpen","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":466,"y1":1142,"x2":590,"y2":1182}}},
+ "road-resume-cancel":{"name":"IdolRoad.ResumePromptCancel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":126,"y1":1142,"x2":298,"y2":1182}}},
+ "road-resume-region":{"name":"IdolRoad.BoxResumePrompt","type":"hint-box","props":{"image":{"kind":"rect","x1":27,"y1":828,"x2":693,"y2":1160}}}
+}}

@@ -1,0 +1,71 @@
+{
+  "version": 3,
+  "definitions": {
+    "current-concentration": {
+      "name": "IdolRoad.BattleConcentrationIcon",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 28,
+          "y1": 247,
+          "x2": 59,
+          "y2": 275
+        }
+      }
+    },
+    "current-concentration-reference": {
+      "name": "IdolRoad.BoxBattleConcentrationReference",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 28,
+          "y1": 247,
+          "x2": 59,
+          "y2": 275
+        }
+      }
+    },
+    "current-concentration-search": {
+      "name": "IdolRoad.BoxBattleConcentrationIcon",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 20,
+          "y1": 237,
+          "x2": 66,
+          "y2": 283
+        }
+      }
+    },
+    "current-concentration-number": {
+      "name": "IdolRoad.BoxBattleConcentrationDigits",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 58,
+          "y1": 266,
+          "x2": 114,
+          "y2": 290
+        }
+      }
+    },
+    "expanded-concentration-digits": {
+      "name": "IdolRoad.BoxBattleConcentrationExpandedDigits",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 58,
+          "y1": 266,
+          "x2": 188,
+          "y2": 290
+        }
+      }
+    }
+  }
+}

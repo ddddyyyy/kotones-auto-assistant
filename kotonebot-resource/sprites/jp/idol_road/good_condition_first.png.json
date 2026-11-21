@@ -1,0 +1,3 @@
+{"version":3,"definitions":{
+ "good-condition-first-icon":{"name":"IdolRoad.BattleGoodConditionFirstIcon","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":18,"y1":237,"x2":58,"y2":280}}}
+}}

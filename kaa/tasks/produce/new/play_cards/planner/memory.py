@@ -12,6 +12,7 @@ from kaa.db.skill_card import SkillCard
 
 from .state import AnomalyStance, AnomalyState, BattleState, ExamBuffState
 from .trigger import TriggerVerdict, evaluate_trigger_id
+from .turn_observation import AbsoluteTurnObservation
 
 FULL_POWER_THRESHOLD = 10
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ class BattleMemory:
     anomaly: AnomalyState = field(default_factory=AnomalyState)
     buffs: ExamBuffState = field(default_factory=ExamBuffState)
     effect_misses: Counter[str] = field(default_factory=Counter)
+    absolute_turn_observation: AbsoluteTurnObservation | None = None
+    _turn_tracking_started: bool = False
 
     def reconcile_remaining_turns(self, observed: int | None) -> int:
         """Debounce OCR jumps without permanently locking a stale turn count.
@@ -80,19 +83,37 @@ class BattleMemory:
         self.pending_turn_correction = observed
         return previous if observed > previous else previous - 1
 
-    def observe(self, remaining_turns: int, hand: list[SkillCard]) -> None:
+    def _elapsed_turns(self, remaining_turns: int, absolute_turn: AbsoluteTurnObservation | None) -> int:
+        previous=self.absolute_turn_observation
+        if absolute_turn is not None:
+            absolute_turn.validate()
+            if remaining_turns!=absolute_turn.remaining_turns:
+                raise ValueError('Absolute turn and planning horizon come from different observations')
+            if self._turn_tracking_started and previous is None:
+                raise ValueError('Cannot switch elapsed-turn sources within a battle memory')
+            if previous is not None:
+                if (previous.battle_id!=absolute_turn.battle_id or absolute_turn.turn<previous.turn
+                    or (previous.frame_id==absolute_turn.frame_id and previous!=absolute_turn)):
+                    raise ValueError('Absolute turn identity regressed or reused a conflicting frame')
+                return absolute_turn.turn-previous.turn
+            return 0
+        if previous is not None:
+            raise ValueError('Absolute turn tracking cannot fall back to remaining-turn differences')
+        return max(0,self.previous_remaining_turns-remaining_turns) if self.previous_remaining_turns is not None else 0
+
+    def observe(self, remaining_turns: int, hand: list[SkillCard], *,
+                absolute_turn: AbsoluteTurnObservation | None = None) -> None:
+        # Validate before touching card zones, play counts or buffs. In the
+        # optional absolute mode, remaining turns are only a planning horizon.
+        elapsed_turns=self._elapsed_turns(remaining_turns,absolute_turn)
         ids = tuple(card._id for card in hand)
         hand_counts = Counter(ids)
         for card_id, count in hand_counts.items():
             self.known_cards[card_id] = max(self.known_cards[card_id], count)
 
-        if (
-            self.previous_remaining_turns is not None
-            and remaining_turns < self.previous_remaining_turns
-        ):
+        if elapsed_turns:
             # Cards left in hand are normally sent to the grave at turn end.
             self.discard.extend(self.previous_hand)
-            elapsed_turns = self.previous_remaining_turns - remaining_turns
             # OCR recovery and skipped/unplayable turns can jump by more than
             # one. Advance every inferred turn, but discard the last visible
             # hand only once: unseen intervening hands must not be invented.
@@ -109,8 +130,10 @@ class BattleMemory:
 
         self.previous_hand = ids
         self.previous_remaining_turns = remaining_turns
+        self.absolute_turn_observation=absolute_turn
+        self._turn_tracking_started=True
 
-    def reconcile_effect_values(self, observed: dict[str, int | None]) -> None:
+    def reconcile_effect_values(self, observed: dict[str, int | None], *, unknown_effects: frozenset[str] = frozenset()) -> None:
         """Reconcile inferred buffs with debounced current HUD readings."""
         points = observed.get('full_power_point')
         if points is not None and points >= 0:
@@ -129,6 +152,10 @@ class BattleMemory:
             'aggressive': 'aggressive',
         }
         for effect, field_name in fields.items():
+            if effect in unknown_effects:
+                # 调用方未完成当前帧识别，不累积成“连续缺失因此为零”。
+                self.effect_misses[effect] = 0
+                continue
             if effect in observed:
                 self.effect_misses[effect] = 0
                 value = observed[effect]
@@ -360,7 +387,7 @@ class BattleMemory:
                     buffs = replace(
                         buffs,
                         parameter_buff_turns=max(
-                            buffs.parameter_buff_turns, effect.effect_turn or value
+                            0, buffs.parameter_buff_turns + max(0, effect.effect_turn or value)
                         ),
                     )
                 case ProduceExamEffectType.ExamParameterBuffMultiplePerTurn:

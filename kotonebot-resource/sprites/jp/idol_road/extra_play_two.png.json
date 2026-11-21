@@ -1,0 +1,1 @@
+{"version":3,"definitions":{"extra-play-two":{"name":"IdolRoad.BattleExtraPlayTwoControl","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":23,"y1":752,"x2":83,"y2":819}}}}}

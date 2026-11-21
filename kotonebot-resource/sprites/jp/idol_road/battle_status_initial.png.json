@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+ "status-header-initial":{"name":"IdolRoad.BattleStatusHeaderInitial","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":145,"y1":70,"x2":362,"y2":96}}},
+ "status-buff-initial":{"name":"IdolRoad.BattleStatusLessonBuffInitial","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":145,"y1":437,"x2":201,"y2":466}}}
+}}

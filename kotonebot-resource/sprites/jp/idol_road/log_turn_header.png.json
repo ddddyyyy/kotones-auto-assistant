@@ -1,0 +1,9 @@
+{"version":3,"definitions":{
+ "log-turn-suffix":{"name":"IdolRoad.LogTurnHeaderSuffix","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":186,"y1":436,"x2":284,"y2":467}}},
+ "log-turn-suffix-reference":{"name":"IdolRoad.BoxLogTurnSuffixReference","type":"hint-box","props":{"image":{"kind":"rect","x1":186,"y1":436,"x2":284,"y2":467}}},
+ "log-turn-suffix-search":{"name":"IdolRoad.BoxLogTurnSuffixSearch","type":"hint-box","props":{"image":{"kind":"rect","x1":140,"y1":130,"x2":330,"y2":1090}}},
+ "log-hand-info":{"name":"IdolRoad.LogHandInfoLabel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":580,"y1":440,"x2":668,"y2":462}}},
+ "log-hand-info-search":{"name":"IdolRoad.BoxLogHandInfoSearch","type":"hint-box","props":{"image":{"kind":"rect","x1":564,"y1":426,"x2":680,"y2":475}}},
+ "log-absolute-turn-text":{"name":"IdolRoad.BoxLogAbsoluteTurnText","type":"hint-box","props":{"image":{"kind":"rect","x1":138,"y1":426,"x2":289,"y2":474}}},
+ "log-remaining-digits":{"name":"IdolRoad.BoxLogRemainingDigits","type":"hint-box","props":{"image":{"kind":"rect","x1":63,"y1":419,"x2":102,"y2":466}}}
+}}

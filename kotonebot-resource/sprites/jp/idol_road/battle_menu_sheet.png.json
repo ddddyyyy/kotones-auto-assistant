@@ -1,0 +1,6 @@
+{"version":3,"definitions":{
+ "conditions-label":{"name":"IdolRoad.BattleMenuConditions","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":62,"y1":1006,"x2":168,"y2":1031}}},
+ "score-label":{"name":"IdolRoad.BattleMenuScore","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":226,"y1":1006,"x2":332,"y2":1031}}},
+ "retire-label":{"name":"IdolRoad.BattleMenuRetire","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":259,"y1":1092,"x2":343,"y2":1120}}},
+ "retire-text":{"name":"IdolRoad.BoxBattleMenuRetireText","type":"hint-box","props":{"image":{"kind":"rect","x1":259,"y1":1092,"x2":343,"y2":1120}}}
+}}

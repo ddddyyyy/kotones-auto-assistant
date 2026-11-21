@@ -1,0 +1,18 @@
+{"version":3,"definitions":{
+ "sub-confirm":{"name":"IdolRoad.MemorySubConfirm","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":319,"y1":1067,"x2":462,"y2":1104}}},
+ "sub-confirm-box":{"name":"IdolRoad.BoxMemorySubConfirm","type":"hint-box","props":{"image":{"kind":"rect","x1":300,"y1":1050,"x2":492,"y2":1125}}},
+ "sub-confirm-reference":{"name":"IdolRoad.BoxMemorySubConfirmReference","type":"hint-box","props":{"image":{"kind":"rect","x1":319,"y1":1067,"x2":462,"y2":1104}}},
+ "sub-confirm-number":{"name":"IdolRoad.BoxMemorySubConfirmNumber","type":"hint-box","props":{"image":{"kind":"rect","x1":375,"y1":1067,"x2":393,"y2":1104}}},
+ "memory-search":{"name":"IdolRoad.MemorySelectorSearch","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":43,"y1":997,"x2":160,"y2":1020}}},
+ "memory-search-box":{"name":"IdolRoad.BoxMemorySelectorSearch","type":"hint-box","props":{"image":{"kind":"rect","x1":27,"y1":981,"x2":185,"y2":1035}}},
+ "editing-group":{"name":"IdolRoad.MemoryEditingGroup","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":290,"y1":655,"x2":351,"y2":678}}},
+ "editing-group-box":{"name":"IdolRoad.BoxMemoryEditingGroup","type":"hint-box","props":{"image":{"kind":"rect","x1":270,"y1":640,"x2":370,"y2":689}}},
+ "assigned":{"name":"IdolRoad.MemoryAssignedBadge","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":405,"y1":831,"x2":466,"y2":855}}},
+ "candidate-reference":{"name":"IdolRoad.BoxMemoryCandidateReference","type":"hint-box","props":{"image":{"kind":"rect","x1":27,"y1":699,"x2":243,"y2":815}}},
+ "candidate-power":{"name":"IdolRoad.BoxMemoryCandidatePower","type":"hint-box","props":{"image":{"kind":"rect","x1":131,"y1":768,"x2":235,"y2":802}}},
+ "candidate-badge-search":{"name":"IdolRoad.BoxMemoryCandidateBadgeSearch","type":"hint-box","props":{"image":{"kind":"rect","x1":167,"y1":699,"x2":243,"y2":731}}},
+ "candidate-highlight-ring":{"name":"IdolRoad.BoxMemoryCandidateHighlightRing","type":"hint-box","props":{"image":{"kind":"rect","x1":15,"y1":687,"x2":255,"y2":827}}},
+ "candidate-presentation":{"name":"IdolRoad.BoxMemoryCandidatePresentation","type":"hint-box","props":{"image":{"kind":"rect","x1":35,"y1":733,"x2":100,"y2":763}}},
+ "candidate-columns":{"name":"IdolRoad.PointMemoryCandidateColumnStride","type":"hint-point","props":{"point":{"kind":"point","x":225,"y":0}}},
+ "candidate-rows":{"name":"IdolRoad.PointMemoryCandidateRowStride","type":"hint-point","props":{"point":{"kind":"point","x":0,"y":130}}}
+}}

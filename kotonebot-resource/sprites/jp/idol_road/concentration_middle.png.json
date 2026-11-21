@@ -1,0 +1,1 @@
+{"version": 3, "definitions": {"current-concentration-middle": {"name": "IdolRoad.BattleConcentrationMiddleIcon", "type": "prefab", "prefab_id": "TemplateMatchPrefab", "props": {"template": {"kind": "image", "x1": 28, "y1": 308, "x2": 59, "y2": 336}}}}}

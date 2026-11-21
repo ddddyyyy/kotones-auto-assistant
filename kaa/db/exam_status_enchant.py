@@ -18,6 +18,7 @@ class ExamStatusEnchant:
     trigger_id: str
     effects: tuple[ProduceExamEffect, ...]
     chained_effects: tuple[ProduceExamEffect, ...] = ()
+    root_effects_complete: bool = False
 
 
 def _load_chained_effects(
@@ -83,6 +84,7 @@ def get_exam_status_enchant(enchant_id: str) -> ExamStatusEnchant | None:
         trigger_id=row['produceExamTriggerId'],
         effects=effects,
         chained_effects=_load_chained_effects(effects),
+        root_effects_complete=bool(effect_ids) and len(effects)==len(effect_ids),
     )
 
 

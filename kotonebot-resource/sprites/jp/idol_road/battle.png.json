@@ -1,0 +1,7 @@
+{"version":3,"definitions":{
+ "battle-score-percent-box":{"name":"IdolRoad.BoxBattleScorePercent","type":"hint-box","props":{"image":{"kind":"rect","x1":108,"y1":82,"x2":222,"y2":121}}},
+ "battle-remaining-label":{"name":"IdolRoad.BattleRemainingLabel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":12,"y1":10,"x2":112,"y2":33}}},
+ "battle-remaining-box":{"name":"IdolRoad.BoxBattleRemainingLabel","type":"hint-box","props":{"image":{"kind":"rect","x1":0,"y1":0,"x2":130,"y2":40}}},
+ "battle-skip-label":{"name":"IdolRoad.BattleSkipLabel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":638,"y1":792,"x2":688,"y2":811}}},
+ "battle-skip-box":{"name":"IdolRoad.BoxBattleSkipLabel","type":"hint-box","props":{"image":{"kind":"rect","x1":620,"y1":775,"x2":705,"y2":825}}}
+}}

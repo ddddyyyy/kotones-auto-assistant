@@ -242,6 +242,11 @@ Item {
                 }
             }
 
+            IdolRoadSettings {
+                settingsCtrl: root.settingsCtrl
+                errors: root.errors
+            }
+
             // ── 社团 ──────────────────────────────────────
             FormGroupBox {
                 title: "社团"

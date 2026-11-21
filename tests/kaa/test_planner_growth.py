@@ -683,7 +683,7 @@ def test_unmodeled_genki_change_does_not_confirm_in_card_conversion():
 
 @pytest.mark.parametrize('resource,field,multiplier', [
     ('parameter_buff', 'parameter_buff_turns', 1.5),
-    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 1.1),
+    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 1.0),
 ])
 @pytest.mark.parametrize('reading,expected_known', [
     ('missing', False), (None, False), (0, False), (3, False), (5, True),
@@ -710,7 +710,7 @@ def test_unknown_zero_multiplier_balance_is_not_confirmed_absence(resource, read
 
 @pytest.mark.parametrize('resource,field,kind,multiplier', [
     ('parameter_buff', 'parameter_buff_turns', 'ExamParameterBuff', 1.5),
-    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 'ExamParameterBuffMultiplePerTurn', 1.1),
+    ('parameter_buff_multiple', 'parameter_buff_multiple_turns', 'ExamParameterBuffMultiplePerTurn', 1.0),
 ])
 @pytest.mark.parametrize('unknown_growth', [False, True])
 def test_unknown_setup_growth_does_not_certify_next_card_multiplier(
@@ -793,7 +793,7 @@ def test_unknown_growth_still_invalidates_current_confirmed_zero_after_grant(mon
 
 @pytest.mark.parametrize('resource,kind,multiplier', [
     ('parameter_buff', 'ExamParameterBuff', 1.5),
-    ('parameter_buff_multiple', 'ExamParameterBuffMultiplePerTurn', 1.1),
+    ('parameter_buff_multiple', 'ExamParameterBuffMultiplePerTurn', 1.0),
 ])
 def test_confirmed_absent_multiplier_grant_can_certify_followup_output(resource, kind, multiplier):
     initial = BattleState(remaining_turns=3, hp=20, genki=0,
@@ -803,6 +803,18 @@ def test_confirmed_absent_multiplier_grant_can_certify_followup_output(resource,
     result = EffectHeuristicEvaluator().evaluate(_card(green=0, effects=(_output(),)), after)
     assert result.projected_output == pytest.approx(10 * multiplier)
     assert result.confirmed_output == pytest.approx(10 * multiplier)
+
+
+@pytest.mark.parametrize('reading,known',[(10,True),(None,False)])
+def test_projected_great_condition_uses_good_duration_without_reviving_unknown(reading,known):
+    from kaa.tasks.produce.new.play_cards.planner.state import ExamBuffState
+    initial=BattleState(remaining_turns=3,hp=20,genki=0,buffs=ExamBuffState(parameter_buff_turns=10),
+        observed_effect_values=(('parameter_buff',reading),),
+        confirmed_absent_effects=frozenset({'parameter_buff_multiple'}))
+    after=simulate_play(initial,_card(green=0,effects=(_output(ProduceExamEffectType.ExamParameterBuffMultiplePerTurn,3),)))
+    result=EffectHeuristicEvaluator().evaluate(_card(green=0,effects=(_output(),)),after)
+    assert result.projected_output==pytest.approx(25.)
+    assert result.confirmed_output==pytest.approx(25. if known else 0.)
 
 
 @pytest.mark.parametrize('resource,kind', [
@@ -939,7 +951,7 @@ def test_gain_modifier_preserves_current_budget_but_uncertifies_later_matching_g
     after_gain = simulate_play(after_setup, _card(green=0, effects=(
         _output(getattr(ProduceExamEffectType, gain), 8),)))
     values = dict(after_gain.effect_values_for_planning)
-    assert values[resource] == (None if possible else (8 if resource == 'parameter_buff' else 13))
+    assert values[resource] == (None if possible else 13)
     assert all(value == 5 for key, value in values.items() if key != resource)
 
 

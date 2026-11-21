@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+  "road-first-rank":{"name":"IdolRoad.TextFirstRank","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":44,"y1":346,"x2":116,"y2":399}}},
+  "road-ranking-next":{"name":"IdolRoad.TextResultNext","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":351,"y1":1146,"x2":411,"y2":1175}}}
+}}

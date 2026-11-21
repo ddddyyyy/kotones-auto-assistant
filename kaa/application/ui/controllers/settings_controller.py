@@ -67,6 +67,19 @@ class SettingsController(QObject):
         self.configChanged.emit()
         self.dirtyChanged.emit(self._draft.is_dirty())
 
+    @Slot(result=str)
+    def idolRoadCharactersJson(self) -> str:
+        from sqlite3 import Error
+        from kaa.db.tower import tower_characters
+
+        try:
+            return json.dumps([
+                {'text': item.name, 'value': item.id} for item in tower_characters()
+            ], ensure_ascii=False)
+        except Error:
+            logger.warning('Cannot read idol road characters; game data may be unavailable.', exc_info=True)
+            return '[]'
+
     @Slot(result=bool)
     def isDirty(self) -> bool:
         return self._draft is not None and self._draft.is_dirty()

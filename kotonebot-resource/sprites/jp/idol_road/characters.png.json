@@ -1,0 +1,11 @@
+{
+  "version": 3,
+  "definitions": {
+    "road-title": {"name":"IdolRoad.TextTitle","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":65,"y1":44,"x2":260,"y2":72}}},
+    "road-rewards": {"name":"IdolRoad.TextTotalRewards","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":133,"y1":449,"x2":365,"y2":479}}},
+    "road-list": {"name":"IdolRoad.BoxCharacters","type":"hint-box","props":{"image":{"kind":"rect","x1":20,"y1":600,"x2":700,"y2":1160}}},
+    "road-scroll-start": {"name":"IdolRoad.PointScrollStart","type":"hint-point","props":{"point":{"kind":"point","x":677,"y":1080}}},
+    "road-scroll-end": {"name":"IdolRoad.PointScrollEnd","type":"hint-point","props":{"point":{"kind":"point","x":677,"y":650}}},
+    "road-back": {"name":"IdolRoad.PointBack","type":"hint-point","props":{"point":{"kind":"point","x":298,"y":1213}}}
+  }
+}

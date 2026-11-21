@@ -1,0 +1,6 @@
+{"version":3,"definitions":{
+ "short-log-header":{"name":"IdolRoad.BoxShortLogHeaderBand","type":"hint-box","props":{"image":{"kind":"rect","x1":138,"y1":148,"x2":680,"y2":196}}},
+ "short-log-top":{"name":"IdolRoad.BoxShortLogTopClear","type":"hint-box","props":{"image":{"kind":"rect","x1":135,"y1":116,"x2":678,"y2":146}}},
+ "short-log-content":{"name":"IdolRoad.BoxShortLogContent","type":"hint-box","props":{"image":{"kind":"rect","x1":40,"y1":200,"x2":678,"y2":1120}}},
+ "short-log-text":{"name":"IdolRoad.BoxShortLogText","type":"hint-box","props":{"image":{"kind":"rect","x1":136,"y1":200,"x2":678,"y2":1120}}}
+}}

@@ -1,0 +1,7 @@
+{"version":3,"definitions":{
+  "road-reward-info-title":{"name":"IdolRoad.TextRewardInfo","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":63,"y1":40,"x2":180,"y2":73}}},
+  "road-reward-info-description":{"name":"IdolRoad.TextRewardInfoDescription","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":28,"y1":104,"x2":518,"y2":157}}},
+  "road-reward-info-close":{"name":"IdolRoad.TextRewardInfoClose","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":337,"y1":1141,"x2":423,"y2":1178}}},
+  "road-reward-info-header":{"name":"IdolRoad.BoxRewardInfoHeader","type":"hint-box","props":{"image":{"kind":"rect","x1":15,"y1":25,"x2":700,"y2":185}}},
+  "road-reward-info-close-box":{"name":"IdolRoad.BoxRewardInfoClose","type":"hint-box","props":{"image":{"kind":"rect","x1":230,"y1":1115,"x2":490,"y2":1205}}}
+}}

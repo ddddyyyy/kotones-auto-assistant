@@ -1,0 +1,18 @@
+{"version":3,"definitions":{
+  "road-conditions-title":{"name":"IdolRoad.TextConditions","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":57,"y1":695,"x2":125,"y2":729}}},
+  "road-conditions-header":{"name":"IdolRoad.BoxConditionsHeader","type":"hint-box","props":{"image":{"kind":"rect","x1":27,"y1":680,"x2":693,"y2":745}}},
+  "road-conditions-close":{"name":"IdolRoad.TextConditionsClose","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":337,"y1":1141,"x2":423,"y2":1178}}},
+  "road-conditions-close-box":{"name":"IdolRoad.BoxConditionsClose","type":"hint-box","props":{"image":{"kind":"rect","x1":230,"y1":1115,"x2":490,"y2":1205}}},
+  "road-conditions-filled1":{"name":"IdolRoad.ConditionsFilledStar1","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":67,"y1":805,"x2":109,"y2":847}}},
+  "road-conditions-filled2":{"name":"IdolRoad.ConditionsFilledStar2","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":115,"y1":805,"x2":157,"y2":847}}},
+  "road-conditions-filled3":{"name":"IdolRoad.ConditionsFilledStar3","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":163,"y1":805,"x2":205,"y2":847}}},
+  "road-conditions-empty":{"name":"IdolRoad.ConditionsEmptyStar","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":169,"y1":909,"x2":199,"y2":939}}},
+  "road-conditions-filled-row2":{"name":"IdolRoad.ConditionsFilledStarRow2","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":67,"y1":904,"x2":109,"y2":946}}},
+  "road-conditions-filled-row3":{"name":"IdolRoad.ConditionsFilledStarRow3","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":67,"y1":1003,"x2":109,"y2":1045}}},
+  "road-conditions-row1":{"name":"IdolRoad.BoxConditionsRow1","type":"hint-box","props":{"image":{"kind":"rect","x1":210,"y1":797,"x2":665,"y2":855}}},
+  "road-conditions-row2":{"name":"IdolRoad.BoxConditionsRow2","type":"hint-box","props":{"image":{"kind":"rect","x1":210,"y1":896,"x2":665,"y2":954}}},
+  "road-conditions-row3":{"name":"IdolRoad.BoxConditionsRow3","type":"hint-box","props":{"image":{"kind":"rect","x1":210,"y1":995,"x2":665,"y2":1053}}},
+  "road-conditions-star1":{"name":"IdolRoad.BoxConditionsStar1","type":"hint-box","props":{"image":{"kind":"rect","x1":64,"y1":801,"x2":112,"y2":850}}},
+  "road-conditions-star2":{"name":"IdolRoad.BoxConditionsStar2","type":"hint-box","props":{"image":{"kind":"rect","x1":112,"y1":801,"x2":160,"y2":850}}},
+  "road-conditions-star3":{"name":"IdolRoad.BoxConditionsStar3","type":"hint-box","props":{"image":{"kind":"rect","x1":160,"y1":801,"x2":208,"y2":850}}}
+}}

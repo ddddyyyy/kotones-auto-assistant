@@ -27,6 +27,7 @@ _TASK_SHORT_NAMES: dict[str, str] = {
     'capsule_toys':           '扭蛋',
     'club_reward':            '社团',
     'contest':                '竞赛',
+    'idol_road':              '爬塔',
     'purchase':               '商店',
     'upgrade_support_card':   '支援卡',
     'produce':                '培育',

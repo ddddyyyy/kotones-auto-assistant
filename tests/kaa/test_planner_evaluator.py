@@ -78,6 +78,53 @@ def test_immediate_output_wins_late_but_setup_scales_with_remaining_turns():
     assert evaluator.evaluate(cast(Any, setup), early).score > evaluator.evaluate(cast(Any, setup), late).score
 
 
+def test_sense_normal_output_includes_concentration_as_estimate_not_confirmed_gain():
+    state=BattleState(remaining_turns=2,hp=39,genki=0,is_exam=True,exam_score_percent=1494,
+        archetype=ProduceExamEffectType.ExamLessonBuff,
+        buffs=ExamBuffState(lesson_buff=61,parameter_buff_turns=22),
+        observed_effect_values=(('lesson_buff',61),('parameter_buff',22)))
+    result=EffectHeuristicEvaluator().evaluate(cast(Any,_card('plain-sense',_effect(ProduceExamEffectType.ExamLesson,6))),state)
+    assert result.projected_output==1509 and result.confirmed_output==0
+
+
+def test_fixed_output_does_not_receive_normal_sense_concentration_bonus():
+    state=BattleState(remaining_turns=2,hp=39,genki=0,is_exam=True,exam_score_percent=1494,
+        archetype=ProduceExamEffectType.ExamLessonBuff,buffs=ExamBuffState(lesson_buff=61))
+    result=EffectHeuristicEvaluator().evaluate(cast(Any,_card('fixed',_effect(ProduceExamEffectType.ExamLessonFix,6))),state)
+    assert result.projected_output==pytest.approx(6*14.94)
+
+
+def test_sense_concentration_payment_precedes_plain_output():
+    state=BattleState(remaining_turns=2,hp=39,genki=0,is_exam=True,exam_score_percent=1494,
+        archetype=ProduceExamEffectType.ExamLessonBuff,
+        buffs=ExamBuffState(lesson_buff=61,parameter_buff_turns=22),
+        observed_effect_values=(('lesson_buff',61),('parameter_buff',22)))
+    card=_card('pay-concentration',_effect(ProduceExamEffectType.ExamLesson,6),
+               cost_type='ExamCostType_ExamLessonBuff',cost_value=2)
+    result=EffectHeuristicEvaluator().evaluate(cast(Any,card),state)
+    assert result.projected_output==1465 and result.confirmed_output==0
+
+
+def test_sense_concentration_granted_by_preceding_segment_affects_later_output():
+    state=BattleState(remaining_turns=2,hp=39,genki=0,is_exam=True,exam_score_percent=1494,
+        archetype=ProduceExamEffectType.ExamLessonBuff,
+        buffs=ExamBuffState(lesson_buff=4,parameter_buff_turns=22),
+        observed_effect_values=(('lesson_buff',4),('parameter_buff',22)))
+    card=_card('setup-then-output',_effect(ProduceExamEffectType.ExamLessonBuff,3),
+               _effect(ProduceExamEffectType.ExamLesson,6))
+    result=EffectHeuristicEvaluator().evaluate(cast(Any,card),state)
+    assert result.projected_output==299 and result.confirmed_output==0
+
+
+def test_same_frame_preview_still_overrides_sense_estimate_without_double_counting(monkeypatch):
+    state=BattleState(remaining_turns=2,hp=39,genki=0,is_exam=True,exam_score_percent=1494,
+        archetype=ProduceExamEffectType.ExamLessonBuff,
+        buffs=ExamBuffState(lesson_buff=61,parameter_buff_turns=22))
+    monkeypatch.setattr(evaluator_module,'current_preview_output',lambda state,card:123.)
+    result=EffectHeuristicEvaluator().evaluate(cast(Any,_card('preview',_effect(ProduceExamEffectType.ExamLesson,6))),state)
+    assert result.projected_output==123 and result.confirmed_output==0
+
+
 @pytest.mark.parametrize('stance', [AnomalyStance.NORMAL, AnomalyStance.PRESERVATION_2])
 def test_observed_strong_stance_corrects_memory_without_inventing_transition_rewards(stance):
     memory = BattleMemory(anomaly=AnomalyState(stance=stance, enthusiasm=3))

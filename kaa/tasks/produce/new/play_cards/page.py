@@ -1,6 +1,6 @@
 import re
 from typing import Any, NamedTuple, Callable, TypeVar, cast, TYPE_CHECKING
-from functools import lru_cache, wraps
+from functools import wraps
 from typing_extensions import deprecated
 
 import cv2
@@ -11,6 +11,7 @@ from kotonebot.primitives import Rect
 from kotonebot import logging, device, Loop, Countdown
 
 from kaa.tasks import R
+from kaa.digit_ocr import digit_classifier as _dddd
 from .ui import CardGameObject, locate_cards
 
 if TYPE_CHECKING:
@@ -73,6 +74,11 @@ def _own_exam_score_box(screen: MatLike) -> Rect | None:
     # Exclude the gauge below the score, but keep digits that extend past the
     # selection frame. The score mask removes the thin frame remnants.
     return Rect(left + 4, 125, min(screen.shape[1] - left - 4, right - left + 4), 40)
+
+
+def find_exam_own_score_box(screen: MatLike) -> Rect | None:
+    """Expose the current unique player-frame geometry without reading a score."""
+    return _own_exam_score_box(screen)
 
 
 def _exam_score_variants(screen: MatLike, box: Rect) -> list[MatLike]:
@@ -169,12 +175,6 @@ def read_exam_standings(screen: MatLike) -> ExamStandings | None:
     if own_score is None or leader_score is None or own_score > leader_score:
         return None
     return ExamStandings(own_score, leader_score, own_is_leader)
-
-
-@lru_cache(maxsize=1)
-def _dddd():
-    import ddddocr
-    return ddddocr.DdddOcr(show_ad=False)
 
 
 def _digits_from_image(img: MatLike, *, fallback_raw: bool = False) -> list[int]:
@@ -490,8 +490,9 @@ def _screenshot_hud() -> MatLike:
 class LessonBattleContext:
     """One immutable decision input; input execution remains in commit()."""
 
-    def __init__(self, screen: MatLike | None = None):
+    def __init__(self, screen: MatLike | None = None, *,single_line_titles: bool=False):
         self._screen = screen
+        self._single_line_titles=single_line_titles
         self._observations: dict[Callable[..., Any], Any] = {}
 
     @_observe_once
@@ -559,7 +560,8 @@ class LessonBattleContext:
     @_observe_once
     def fetch_hands(self):
         """获取手牌信息"""
-        cards = locate_cards(self.fetch_screen())
+        cards = (locate_cards(self.fetch_screen(),single_line_titles=True) if self._single_line_titles
+                 else locate_cards(self.fetch_screen()))
         return cards
 
     @_observe_once

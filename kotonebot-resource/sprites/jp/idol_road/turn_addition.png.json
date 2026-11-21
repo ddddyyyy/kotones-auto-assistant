@@ -1,0 +1,3 @@
+{"version":3,"definitions":{
+ "visible-turn-addition-marker":{"name":"IdolRoad.RuleTurnAdditionMarker","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":385,"y1":749,"x2":610,"y2":792}}}
+}}

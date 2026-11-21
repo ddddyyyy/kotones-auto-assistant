@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "definitions": {
+    "conditions-filled-alternate-1": {
+      "name": "IdolRoad.ConditionsFilledAlternateRow1",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 67,
+          "y1": 805,
+          "x2": 109,
+          "y2": 847
+        }
+      }
+    },
+    "conditions-filled-alternate-2": {
+      "name": "IdolRoad.ConditionsFilledAlternateRow2",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 67,
+          "y1": 904,
+          "x2": 109,
+          "y2": 946
+        }
+      }
+    },
+    "conditions-filled-alternate-3": {
+      "name": "IdolRoad.ConditionsFilledAlternateRow3",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 67,
+          "y1": 1003,
+          "x2": 109,
+          "y2": 1045
+        }
+      }
+    }
+  }
+}

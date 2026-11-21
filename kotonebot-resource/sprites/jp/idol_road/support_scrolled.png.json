@@ -1,0 +1,8 @@
+{"version":3,"definitions":{
+ "mental-icon-scrolled":{"name":"IdolRoad.RuleMentalIconScrolled","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":441,"y1":755,"x2":478,"y2":790}}},
+ "mental-label-scrolled":{"name":"IdolRoad.RuleMentalSkillLabelScrolled","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":483,"y1":757,"x2":654,"y2":786}}},
+ "mental-block-two-scrolled":{"name":"IdolRoad.RuleMentalBlockTwoTurnsScrolled","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":163,"y1":792,"x2":457,"y2":823}}},
+ "rule-concentration-scrolled":{"name":"IdolRoad.RuleConcentrationIconScrolled","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":172,"y1":359,"x2":207,"y2":394}}},
+ "rule-extra-play-scrolled":{"name":"IdolRoad.RuleExtraPlayIconScrolled","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":450,"y1":359,"x2":486,"y2":394}}},
+ "rule-extra-play-scrolled-wide":{"name":"IdolRoad.RuleExtraPlayIconScrolledWide","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":465,"y1":953,"x2":501,"y2":988}}}
+}}

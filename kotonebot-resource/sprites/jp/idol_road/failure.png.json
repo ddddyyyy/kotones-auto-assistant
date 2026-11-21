@@ -1,0 +1,9 @@
+{
+  "version": 3,
+  "definitions": {
+    "road-failure": {"name":"IdolRoad.TextFailure","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":39,"y1":166,"x2":168,"y2":207}}},
+    "road-return-list": {"name":"IdolRoad.TextReturnToList","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":313,"y1":1145,"x2":453,"y2":1178}}},
+    "road-retry": {"name":"IdolRoad.TextRetry","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":91,"y1":1149,"x2":164,"y2":1172}}},
+    "road-result-header": {"name":"IdolRoad.BoxResultHeader","type":"hint-box","props":{"image":{"kind":"rect","x1":25,"y1":145,"x2":340,"y2":230}}}
+  }
+}

@@ -9,6 +9,21 @@ from kaa.tasks.produce.new.play_cards import page
 from kaa.tasks.produce.new.play_cards.planner import hud_effects
 
 
+def test_single_line_card_title_option_is_context_local_and_preserves_default_parser(monkeypatch):
+    screen=np.zeros((1280,720,3),dtype='uint8')
+    calls=[]
+    def recognize(image,**options):
+        assert image is screen
+        calls.append(options)
+        return []
+    monkeypatch.setattr(page,'locate_cards',recognize)
+    ordinary=page.LessonBattleContext(screen)
+    direct=page.LessonBattleContext(screen,single_line_titles=True)
+    for context in (ordinary,direct,ordinary,direct):
+        assert context.fetch_hands()==[]
+    assert calls==[{}, {'single_line_titles':True}]
+
+
 def test_snapshot_is_shared_by_all_parsers_and_next_context_refreshes(monkeypatch):
     captures = []
     inputs = []
@@ -36,6 +51,9 @@ def test_snapshot_is_shared_by_all_parsers_and_next_context_refreshes(monkeypatc
 
     monkeypatch.setattr(page, 'device', SimpleNamespace(screenshot=capture))
     monkeypatch.setattr(page, '_fetch_int', number)
+    # Score gaps have their own parser now; keep this snapshot-ownership test
+    # synthetic rather than running real OCR on the generated black frame.
+    monkeypatch.setattr(page, '_read_score_gap', lambda screen: number(None, screen=screen))
     monkeypatch.setattr(page, '_fetch_remaining_turns', turns)
     monkeypatch.setattr(page, '_fetch_exam_remaining_turns', turns)
     monkeypatch.setattr(page, 'locate_cards', hands)

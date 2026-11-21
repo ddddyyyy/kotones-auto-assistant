@@ -1,0 +1,7 @@
+{"version":3,"definitions":{
+ "hp-tooltip-label":{"name":"IdolRoad.BattleHpTooltipLabel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":329,"y1":193,"x2":376,"y2":218}}},
+ "hp-tooltip-box":{"name":"IdolRoad.BoxBattleHpTooltip","type":"hint-box","props":{"image":{"kind":"rect","x1":280,"y1":170,"x2":480,"y2":278}}},
+ "hp-tooltip-ref":{"name":"IdolRoad.BoxBattleHpTooltipReference","type":"hint-box","props":{"image":{"kind":"rect","x1":329,"y1":193,"x2":376,"y2":218}}},
+ "hp-fraction":{"name":"IdolRoad.BoxBattleHpFraction","type":"hint-box","props":{"image":{"kind":"rect","x1":375,"y1":190,"x2":499,"y2":221}}},
+ "hp-inspect-control":{"name":"IdolRoad.BoxBattleHpInspect","type":"hint-box","props":{"image":{"kind":"rect","x1":541,"y1":213,"x2":619,"y2":243}}}
+}}

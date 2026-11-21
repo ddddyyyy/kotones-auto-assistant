@@ -46,13 +46,29 @@ def evaluate_play_feedback(pending: PendingPlay, after: BattleState) -> PlayFeed
         and before.score_target_is_final == after.score_target_is_final
         else None
     )
+    before_turn,after_turn=before.absolute_turn_observation,after.absolute_turn_observation
+    absolute_mode=before_turn is not None or after_turn is not None
+    if absolute_mode:
+        if before_turn is None or after_turn is None:
+            return PlayFeedback(PlayFeedbackStatus.UNCONFIRMED,'absolute_turn_observation_missing',gap_reduction)
+        try:
+            before_turn.validate()
+            after_turn.validate()
+        except ValueError:
+            return PlayFeedback(PlayFeedbackStatus.UNCONFIRMED,'absolute_turn_observation_invalid',gap_reduction)
+        if (before_turn.battle_id!=after_turn.battle_id or after_turn.turn<before_turn.turn
+            or (before_turn.frame_id==after_turn.frame_id and before_turn!=after_turn)
+            or before_turn.remaining_turns!=before.remaining_turns or after_turn.remaining_turns!=after.remaining_turns
+            or before.projected_effect_values is not None or after.projected_effect_values is not None):
+            return PlayFeedback(PlayFeedbackStatus.UNCONFIRMED,'absolute_turn_context_conflict',gap_reduction)
     if pending.move_dialog_seen:
         return PlayFeedback(
             PlayFeedbackStatus.CONFIRMED, 'card_move_dialog', gap_reduction
         )
 
-    if (before.remaining_turns_known and after.remaining_turns_known
-            and after.remaining_turns < before.remaining_turns):
+    advanced=(after_turn.turn>before_turn.turn if before_turn is not None and after_turn is not None
+              else before.remaining_turns_known and after.remaining_turns_known and after.remaining_turns<before.remaining_turns)
+    if advanced:
         # Turn-end effects and a refreshed hand cannot identify a single play.
         # Keep speculative memory rollback even when resources or score change.
         return PlayFeedback(
@@ -61,10 +77,8 @@ def evaluate_play_feedback(pending: PendingPlay, after: BattleState) -> PlayFeed
             gap_reduction,
         )
 
-    same_turn = (
-        before.remaining_turns_known and after.remaining_turns_known
-        and after.remaining_turns == before.remaining_turns
-    )
+    same_turn = (before_turn.turn==after_turn.turn if before_turn is not None and after_turn is not None else
+        before.remaining_turns_known and after.remaining_turns_known and after.remaining_turns==before.remaining_turns)
     complete_hands = (
         before.hand_size == len(before.hand_card_ids)
         and after.hand_size == len(after.hand_card_ids)

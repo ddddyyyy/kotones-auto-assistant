@@ -1,0 +1,1 @@
+{"version":3,"definitions":{"queued-turn-one":{"name":"IdolRoad.QueuedTurnOne","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":98,"y1":124,"x2":155,"y2":155}}},"queued-turn-box":{"name":"IdolRoad.BoxQueuedTurns","type":"hint-box","props":{"image":{"kind":"rect","x1":98,"y1":124,"x2":155,"y2":155}}}}}

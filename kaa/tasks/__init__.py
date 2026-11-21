@@ -18,6 +18,7 @@ from .daily.contest import contest
 from .daily.mission_reward import mission_reward
 from .daily.purchase import purchase
 from .daily.upgrade_support_card import upgrade_support_card
+from .idol_road import idol_road
 
 from .produce.produce import produce
 
@@ -79,6 +80,7 @@ TASK_REGISTRY: dict[str, TaskInfo] = {
         'contest', contest,
         config_name='contest',
     ),
+    'idol_road': TaskInfo('idol_road', idol_road, config_name='idol_road'),
     'purchase': TaskInfo(
         'purchase', purchase,
         config_name='purchase',

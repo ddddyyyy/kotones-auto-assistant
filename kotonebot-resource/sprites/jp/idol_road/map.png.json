@@ -1,0 +1,19 @@
+{
+  "version": 3,
+  "definitions": {
+    "road-map-label": {"name":"IdolRoad.TextAchievement","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":28,"y1":495,"x2":192,"y2":539}}},
+    "road-map-challenge": {"name":"IdolRoad.TextMapChallenge","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":428,"y1":974,"x2":570,"y2":1003}}},
+    "road-map-char": {"name":"IdolRoad.BoxMapCharacter","type":"hint-box","props":{"image":{"kind":"rect","x1":15,"y1":140,"x2":200,"y2":181}}},
+    "road-map-number": {"name":"IdolRoad.BoxMapStage","type":"hint-box","props":{"image":{"kind":"rect","x1":385,"y1":686,"x2":550,"y2":750}}},
+    "road-map-star": {"name":"IdolRoad.EmptyStar","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":367,"y1":783,"x2":402,"y2":817}}},
+    "road-map-stars": {"name":"IdolRoad.BoxMapStars","type":"hint-box","props":{"image":{"kind":"rect","x1":349,"y1":765,"x2":576,"y2":830}}},
+    "road-map-empty-full":{"name":"IdolRoad.MapEmptyStar","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":367,"y1":783,"x2":402,"y2":817}}},
+    "road-map-star1":{"name":"IdolRoad.BoxMapStar1","type":"hint-box","props":{"image":{"kind":"rect","x1":346,"y1":762,"x2":421,"y2":837}}},
+    "road-map-star2":{"name":"IdolRoad.BoxMapStar2","type":"hint-box","props":{"image":{"kind":"rect","x1":424,"y1":762,"x2":499,"y2":837}}},
+    "road-map-star3":{"name":"IdolRoad.BoxMapStar3","type":"hint-box","props":{"image":{"kind":"rect","x1":502,"y1":762,"x2":577,"y2":837}}},
+    "road-map-next-node":{"name":"IdolRoad.BoxMapNextNode","type":"hint-box","props":{"image":{"kind":"rect","x1":280,"y1":398,"x2":640,"y2":470}}},
+    "road-map-challenge-box":{"name":"IdolRoad.BoxMapChallenge","type":"hint-box","props":{"image":{"kind":"rect","x1":320,"y1":945,"x2":610,"y2":1030}}},
+    "road-map-ranking":{"name":"IdolRoad.TextStageRanking","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":28,"y1":1060,"x2":184,"y2":1080}}},
+    "road-map-sidebar":{"name":"IdolRoad.BoxMapSidebar","type":"hint-box","props":{"image":{"kind":"rect","x1":15,"y1":490,"x2":201,"y2":1145}}}
+  }
+}

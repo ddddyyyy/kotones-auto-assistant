@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "definitions": {
+    "log-turn-suffix-scrolled": {
+      "name": "IdolRoad.LogTurnHeaderSuffixScrolled",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 168,
+          "y1": 591,
+          "x2": 266,
+          "y2": 622
+        }
+      }
+    },
+    "log-hand-info-scrolled": {
+      "name": "IdolRoad.LogHandInfoLabelScrolled",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 580,
+          "y1": 595,
+          "x2": 668,
+          "y2": 617
+        }
+      }
+    }
+  }
+}

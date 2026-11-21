@@ -1,0 +1,9 @@
+{"version":3,"definitions":{
+ "auto-title":{"name":"IdolRoad.AutoFormationTitle","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":58,"y1":829,"x2":251,"y2":862}}},
+ "auto-purpose":{"name":"IdolRoad.BoxAutoFormationPurpose","type":"hint-box","props":{"image":{"kind":"rect","x1":52,"y1":907,"x2":386,"y2":944}}},
+ "auto-confirm":{"name":"IdolRoad.AutoFormationConfirm","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":486,"y1":1139,"x2":557,"y2":1178}}},
+ "auto-cancel":{"name":"IdolRoad.AutoFormationCancel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":169,"y1":1143,"x2":308,"y2":1177}}},
+ "auto-title-box":{"name":"IdolRoad.BoxAutoFormationHeader","type":"hint-box","props":{"image":{"kind":"rect","x1":27,"y1":810,"x2":693,"y2":884}}},
+ "auto-confirm-box":{"name":"IdolRoad.BoxAutoFormationConfirm","type":"hint-box","props":{"image":{"kind":"rect","x1":373,"y1":1119,"x2":634,"y2":1204}}},
+ "auto-cancel-box":{"name":"IdolRoad.BoxAutoFormationCancel","type":"hint-box","props":{"image":{"kind":"rect","x1":86,"y1":1117,"x2":349,"y2":1202}}}
+}}

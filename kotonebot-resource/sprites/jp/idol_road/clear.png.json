@@ -1,0 +1,11 @@
+{"version":3,"definitions":{
+  "road-perfect":{"name":"IdolRoad.TextPerfect","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":140,"y1":182,"x2":580,"y2":257}}},
+  "road-clear-stage":{"name":"IdolRoad.BoxClearStage","type":"hint-box","props":{"image":{"kind":"rect","x1":280,"y1":378,"x2":440,"y2":461}}},
+  "road-clear-title":{"name":"IdolRoad.BoxClearTitle","type":"hint-box","props":{"image":{"kind":"rect","x1":130,"y1":170,"x2":590,"y2":270}}},
+  "road-result-filled-star":{"name":"IdolRoad.ResultFilledStar","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":164,"y1":533,"x2":258,"y2":629}}},
+  "road-result-filled-star2":{"name":"IdolRoad.ResultFilledStar2","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":314,"y1":533,"x2":408,"y2":629}}},
+  "road-result-filled-star3":{"name":"IdolRoad.ResultFilledStar3","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":464,"y1":533,"x2":558,"y2":629}}},
+  "road-result-star1":{"name":"IdolRoad.BoxResultStar1","type":"hint-box","props":{"image":{"kind":"rect","x1":142,"y1":512,"x2":281,"y2":652}}},
+  "road-result-star2":{"name":"IdolRoad.BoxResultStar2","type":"hint-box","props":{"image":{"kind":"rect","x1":291,"y1":512,"x2":430,"y2":652}}},
+  "road-result-star3":{"name":"IdolRoad.BoxResultStar3","type":"hint-box","props":{"image":{"kind":"rect","x1":440,"y1":512,"x2":579,"y2":652}}}
+}}

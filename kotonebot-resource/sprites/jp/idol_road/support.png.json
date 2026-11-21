@@ -1,0 +1,256 @@
+{
+  "version": 3,
+  "definitions": {
+    "support-title": {
+      "name": "IdolRoad.TextSupportDetails",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 56,
+          "y1": 96,
+          "x2": 328,
+          "y2": 129
+        }
+      }
+    },
+    "mental-icon": {
+      "name": "IdolRoad.RuleMentalIcon",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 441,
+          "y1": 916,
+          "x2": 478,
+          "y2": 951
+        }
+      }
+    },
+    "mental-block-reference": {
+      "name": "IdolRoad.BoxMentalBlockReference",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 163,
+          "y1": 953,
+          "x2": 457,
+          "y2": 984
+        }
+      }
+    },
+    "mental-duration-number": {
+      "name": "IdolRoad.BoxMentalDurationDigits",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 354,
+          "y1": 951,
+          "x2": 374,
+          "y2": 987
+        }
+      }
+    },
+    "mental-label": {
+      "name": "IdolRoad.RuleMentalSkillLabel",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 483,
+          "y1": 918,
+          "x2": 654,
+          "y2": 947
+        }
+      }
+    },
+    "mental-block-two": {
+      "name": "IdolRoad.RuleMentalBlockTwoTurns",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 163,
+          "y1": 953,
+          "x2": 457,
+          "y2": 984
+        }
+      }
+    },
+    "support-turn-suffix": {
+      "name": "IdolRoad.SupportTurnSuffix",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 88,
+          "y1": 274,
+          "x2": 164,
+          "y2": 299
+        }
+      }
+    },
+    "rule-concentration-icon": {
+      "name": "IdolRoad.RuleConcentrationIcon",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 172,
+          "y1": 520,
+          "x2": 207,
+          "y2": 555
+        }
+      }
+    },
+    "rule-extra-play-icon": {
+      "name": "IdolRoad.RuleExtraPlayIcon",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 450,
+          "y1": 520,
+          "x2": 486,
+          "y2": 555
+        }
+      }
+    },
+    "support-title-box": {
+      "name": "IdolRoad.BoxSupportHeader",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 25,
+          "y1": 75,
+          "x2": 695,
+          "y2": 150
+        }
+      }
+    },
+    "support-close": {
+      "name": "IdolRoad.SupportClose",
+      "type": "prefab",
+      "prefab_id": "TemplateMatchPrefab",
+      "props": {
+        "template": {
+          "kind": "image",
+          "x1": 341,
+          "y1": 1144,
+          "x2": 424,
+          "y2": 1177
+        }
+      }
+    },
+    "support-close-box": {
+      "name": "IdolRoad.BoxSupportClose",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 230,
+          "y1": 1115,
+          "x2": 493,
+          "y2": 1200
+        }
+      }
+    },
+    "support-cards": {
+      "name": "IdolRoad.BoxSupportCards",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 35,
+          "y1": 235,
+          "x2": 685,
+          "y2": 1070
+        }
+      }
+    },
+    "support-reference": {
+      "name": "IdolRoad.BoxSupportCardReference",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 40,
+          "y1": 244,
+          "x2": 677,
+          "y2": 429
+        }
+      }
+    },
+    "support-turn": {
+      "name": "IdolRoad.BoxSupportTurn",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 57,
+          "y1": 254,
+          "x2": 200,
+          "y2": 302
+        }
+      }
+    },
+    "support-description": {
+      "name": "IdolRoad.BoxSupportDescription",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 160,
+          "y1": 322,
+          "x2": 663,
+          "y2": 417
+        }
+      }
+    },
+    "support-stage": {
+      "name": "IdolRoad.BoxSupportStage",
+      "type": "hint-box",
+      "props": {
+        "image": {
+          "kind": "rect",
+          "x1": 164,
+          "y1": 190,
+          "x2": 221,
+          "y2": 228
+        }
+      }
+    },
+    "support-scroll-start": {
+      "name": "IdolRoad.PointSupportScrollStart",
+      "type": "hint-point",
+      "props": {
+        "point": {
+          "kind": "point",
+          "x": 659,
+          "y": 970
+        }
+      }
+    },
+    "support-scroll-end": {
+      "name": "IdolRoad.PointSupportScrollEnd",
+      "type": "hint-point",
+      "props": {
+        "point": {
+          "kind": "point",
+          "x": 659,
+          "y": 770
+        }
+      }
+    }
+  }
+}

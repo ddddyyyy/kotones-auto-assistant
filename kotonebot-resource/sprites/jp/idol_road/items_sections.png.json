@@ -1,0 +1,7 @@
+{"version":3,"definitions":{
+ "items-stage-section":{"name":"IdolRoad.TextItemsStageSection","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":64,"y1":128,"x2":177,"y2":155}}},
+ "items-memory-section":{"name":"IdolRoad.TextItemsMemorySection","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":63,"y1":490,"x2":232,"y2":520}}},
+ "items-section-region":{"name":"IdolRoad.BoxItemSections","type":"hint-box","props":{"image":{"kind":"rect","x1":20,"y1":100,"x2":700,"y2":1100}}},
+ "items-scroll-start":{"name":"IdolRoad.PointItemsScrollStart","type":"hint-point","props":{"point":{"kind":"point","x":660,"y":960}}},
+ "items-scroll-end":{"name":"IdolRoad.PointItemsScrollEnd","type":"hint-point","props":{"point":{"kind":"point","x":660,"y":560}}}
+}}

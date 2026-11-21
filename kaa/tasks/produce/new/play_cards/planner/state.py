@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from .turn_observation import AbsoluteTurnObservation
 from enum import Enum
 from typing import Literal
 
 from kaa.db.constants import ProduceExamEffectType, ProducePlanType
+from .card_payment import CardPaymentObservation
 
 
 class AnomalyStance(str, Enum):
@@ -123,6 +125,8 @@ class BattleState:
     """False means remaining_turns is a conservative planning horizon, not a HUD fact."""
     observed_effect_values: tuple[tuple[str, int | None], ...] = ()
     """Raw HUD values; inferred buffs must not confirm their own speculative play."""
+    absolute_turn_observation: AbsoluteTurnObservation | None = None
+    """Optional adapter-confirmed current round; remaining turns are not a round ID."""
 
     projected_effect_values: tuple[tuple[str, int | None], ...] | None = None
     """Trusted numeric balances propagated by lookahead, never HUD evidence.
@@ -181,6 +185,16 @@ class BattleState:
     Set only for the individual evaluation; never shared with other slots,
     lookahead, memory, or a later observation.
     """
+    observed_card_output_is_lower_bound: bool = False
+    """Current single-hit Sense preview for ranking; never a known total gain."""
+    observed_card_payments: tuple[CardPaymentObservation,...] = ()
+    """Audited current hand payments; invalid after any simulated transition."""
+    native_payment_conflict_card_ids: frozenset[str] = frozenset()
+    """Current native-available cards contradicting modeled affordability.
+
+    No numeric fee, HP projection or visible follow-up payment is certified.
+    Populated only by the mode adapter from the current captured hand.
+    """
 
     unresolved_growth_card_ids: frozenset[str] = frozenset()
     """Card kinds with a visible, unparsed growth marker in this snapshot.
@@ -195,6 +209,11 @@ class BattleState:
     Rules match each candidate's metadata rather than changing DB cards or
     treating every copy of a card ID as one observed instance.
     """
+
+    rank_at_most: int | None = None
+    """Explicit ranked goal; does not invent the score at that rank or prove clear."""
+    max_hp: int | None = None
+    """Optional adapter-verified current maximum HP; never inferred from a full bar."""
 
     @property
     def effect_values_for_planning(self) -> tuple[tuple[str, int | None], ...]:

@@ -10,6 +10,7 @@ from kaa.db.skill_card import SkillCard
 from kaa.db.card_growth import get_card_growth_rule
 from kaa.db.card_status_enchant import card_enchant_uncertainty
 from .state import AnomalyStance, BattleState
+from .card_payment import valid_card_payment
 
 SPECIAL_COST_EFFECTS = {
     'ExamCostType_ExamFullPowerPoint': 'full_power_point',
@@ -102,8 +103,32 @@ def projected_growth_output(
     return value, count, known
 
 
+def observed_play_cost(state: BattleState,card: SkillCard) -> tuple[int,int] | None:
+    """Use an audited native fee only while every copy belongs to this hand."""
+    absolute=state.absolute_turn_observation
+    if (absolute is None or state.projected_effect_values is not None or state.projected_card_growth
+        or state.projected_stamina_consumption is not None or not state.is_exam
+        or card._id!='p_card-00-acc-0_002' or card.upgrade_count!=0
+        or card._id in state.unresolved_growth_card_ids or card.stamina!=0 or card.force_stamina!=0
+        or card.cost_value!=0 or card.play_effects or card.move_produce_exam_effects
+        or card._play_produce_exam_trigger_id or card._produce_card_status_enchant_id
+        or card.play_move_position_type!='ProduceCardMovePositionType_Lost'):
+        return None
+    values=[p for p in state.observed_card_payments if p.card_id==card._id]
+    if (not values or len(values)!=state.hand_card_ids.count(card._id)
+        or len({p.rect for p in values})!=len(values)
+        or any(not valid_card_payment(p,absolute.frame_id) for p in values)
+        or len({p.green for p in values})!=1):
+        return None
+    return values[0].green,0
+
+
 def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
     """Keep uncalibrated modifier combinations out of payment proofs."""
+    if getattr(card, '_id', None) in state.native_payment_conflict_card_ids:
+        return False
+    if observed_play_cost(state,card) is not None:
+        return True
     green, red, growth_known = projected_growth_payment(state, card)
     if not growth_known:
         return False
@@ -149,6 +174,8 @@ def projected_cost_supported(state: BattleState, card: SkillCard) -> bool:
 
 def play_cost(state: BattleState, card: SkillCard) -> tuple[int, int]:
     """Green (genki first) and red (HP only) costs before card effects."""
+    observed=observed_play_cost(state,card)
+    if observed is not None:return observed
     green, red, _growth_known = projected_growth_payment(state, card)
     if (
         state.projected_effect_values is not None

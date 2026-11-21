@@ -2,6 +2,7 @@ from typing import TypeVar, Literal, Sequence
 from pydantic import BaseModel, ConfigDict
 
 from .base_config import BackendConfig
+from .idol_road import IdolRoadConfig
 
 
 from .const import (
@@ -205,6 +206,9 @@ class TasksConfig(ConfigBaseModel):
 
     contest: ContestConfig = ContestConfig()
     """竞赛配置"""
+
+    idol_road: IdolRoadConfig = IdolRoadConfig()
+    """偶像之路配置。"""
 
     produce: ProduceConfig = ProduceConfig()
     """培育配置"""

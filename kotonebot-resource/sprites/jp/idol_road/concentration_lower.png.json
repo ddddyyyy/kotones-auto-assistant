@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+ "lower-concentration-icon":{"name":"IdolRoad.BattleConcentrationLowerIcon","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":28,"y1":369,"x2":59,"y2":397}}},
+ "current-concentration-stack":{"name":"IdolRoad.BoxBattleConcentrationStack","type":"hint-box","props":{"image":{"kind":"rect","x1":20,"y1":237,"x2":66,"y2":730}}}
+}}

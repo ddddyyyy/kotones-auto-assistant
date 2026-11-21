@@ -1,0 +1,19 @@
+{
+  "version": 3,
+  "definitions": {
+    "formation-total-turns":{"name":"IdolRoad.BoxFormationTotalTurns","type":"hint-box","props":{"image":{"kind":"rect","x1":258,"y1":29,"x2":335,"y2":81}}},
+    "road-open-support":{"name":"IdolRoad.BoxOpenSupport","type":"hint-box","props":{"image":{"kind":"rect","x1":380,"y1":42,"x2":505,"y2":111}}},
+    "road-formation-support": {"name":"IdolRoad.TextSupportTrouble","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":381,"y1":16,"x2":511,"y2":40}}},
+    "road-formation-main": {"name":"IdolRoad.TextMain","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":27,"y1":785,"x2":82,"y2":812}}},
+    "road-formation-start": {"name":"IdolRoad.TextStart","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":327,"y1":1075,"x2":433,"y2":1108}}},
+    "road-formation-char": {"name":"IdolRoad.BoxFormationCharacter","type":"hint-box","props":{"image":{"kind":"rect","x1":191,"y1":384,"x2":465,"y2":426}}},
+    "road-formation-number": {"name":"IdolRoad.BoxFormationStage","type":"hint-box","props":{"image":{"kind":"rect","x1":94,"y1":36,"x2":154,"y2":78}}},
+    "road-main-power": {"name":"IdolRoad.BoxMainPower","type":"hint-box","props":{"image":{"kind":"rect","x1":136,"y1":887,"x2":229,"y2":916}}},
+    "road-main-label-point": {"name":"IdolRoad.PointMainLabel","type":"hint-point","props":{"point":{"kind":"point","x":27,"y":785}}},
+    "road-start-button": {"name":"IdolRoad.BoxStartButton","type":"hint-box","props":{"image":{"kind":"rect","x1":239,"y1":1057,"x2":478,"y2":1125}}},
+    "road-form-empty-star":{"name":"IdolRoad.FormationEmptyStar","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":33,"y1":91,"x2":63,"y2":121}}},
+    "road-form-star1":{"name":"IdolRoad.BoxFormationStar1","type":"hint-box","props":{"image":{"kind":"rect","x1":24,"y1":82,"x2":72,"y2":130}}},
+    "road-form-star2":{"name":"IdolRoad.BoxFormationStar2","type":"hint-box","props":{"image":{"kind":"rect","x1":72,"y1":82,"x2":120,"y2":130}}},
+    "road-form-star3":{"name":"IdolRoad.BoxFormationStar3","type":"hint-box","props":{"image":{"kind":"rect","x1":120,"y1":82,"x2":168,"y2":130}}}
+  }
+}

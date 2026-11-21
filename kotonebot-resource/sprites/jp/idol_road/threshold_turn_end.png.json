@@ -1,0 +1,14 @@
+{"version":3,"definitions":{
+ "regen-template":{"name":"IdolRoad.RuleConcentrationTurnEndTwo","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":165,"y1":521,"x2":660,"y2":590}}},
+ "score-template":{"name":"IdolRoad.RuleScoreTurnEndFive","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":165,"y1":719,"x2":660,"y2":789}}},
+ "regen-reference":{"name":"IdolRoad.BoxConcentrationTurnEndReference","type":"hint-box","props":{"image":{"kind":"rect","x1":165,"y1":521,"x2":660,"y2":590}}},
+ "score-reference":{"name":"IdolRoad.BoxScoreTurnEndReference","type":"hint-box","props":{"image":{"kind":"rect","x1":165,"y1":719,"x2":660,"y2":789}}},
+ "regen-threshold":{"name":"IdolRoad.BoxConcentrationTurnEndThreshold","type":"hint-box","props":{"image":{"kind":"rect","x1":284,"y1":521,"x2":301,"y2":554}}},
+ "score-threshold":{"name":"IdolRoad.BoxScoreTurnEndThreshold","type":"hint-box","props":{"image":{"kind":"rect","x1":284,"y1":719,"x2":317,"y2":753}}},
+ "regen-gain":{"name":"IdolRoad.BoxConcentrationTurnEndGain","type":"hint-box","props":{"image":{"kind":"rect","x1":310,"y1":558,"x2":341,"y2":589}}},
+ "score-gain":{"name":"IdolRoad.BoxScoreTurnEndGain","type":"hint-box","props":{"image":{"kind":"rect","x1":285,"y1":757,"x2":324,"y2":789}}},
+ "regen-comparator":{"name":"IdolRoad.RuleConcentrationTurnEndAtLeast","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":301,"y1":522,"x2":348,"y2":553}}},
+ "score-comparator":{"name":"IdolRoad.RuleScoreTurnEndAtLeast","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":317,"y1":720,"x2":364,"y2":752}}},
+ "regen-comparator-box":{"name":"IdolRoad.BoxConcentrationTurnEndAtLeast","type":"hint-box","props":{"image":{"kind":"rect","x1":301,"y1":522,"x2":348,"y2":553}}},
+ "score-comparator-box":{"name":"IdolRoad.BoxScoreTurnEndAtLeast","type":"hint-box","props":{"image":{"kind":"rect","x1":317,"y1":720,"x2":364,"y2":752}}}
+}}

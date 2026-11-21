@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+ "log-turn-suffix-alternate":{"name":"IdolRoad.LogTurnHeaderSuffixAlternate","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":168,"y1":724,"x2":266,"y2":755}}},
+ "log-hand-info-alternate":{"name":"IdolRoad.LogHandInfoLabelAlternate","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":580,"y1":728,"x2":668,"y2":750}}}
+}}

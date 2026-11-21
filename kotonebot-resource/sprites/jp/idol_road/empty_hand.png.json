@@ -1,0 +1,3 @@
+{"version":3,"definitions":{
+ "empty-hand-message":{"name":"IdolRoad.BoxEmptyHandMessage","type":"hint-box","props":{"image":{"kind":"rect","x1":185,"y1":982,"x2":540,"y2":1023}}}
+}}

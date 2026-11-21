@@ -1,0 +1,18 @@
+{"version":3,"definitions":{
+ "status-header":{"name":"IdolRoad.BattleStatusHeader","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":145,"y1":23,"x2":362,"y2":49}}},
+ "status-close":{"name":"IdolRoad.BattleStatusClose","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":335,"y1":730,"x2":385,"y2":780}}},
+ "status-buff":{"name":"IdolRoad.BattleStatusLessonBuff","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":145,"y1":390,"x2":201,"y2":419}}},
+ "status-play":{"name":"IdolRoad.BattleStatusExtraPlay","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":145,"y1":574,"x2":453,"y2":603}}},
+ "status-header-area":{"name":"IdolRoad.BoxBattleStatusHeader","type":"hint-box","props":{"image":{"kind":"rect","x1":130,"y1":15,"x2":380,"y2":155}}},
+ "status-close-area":{"name":"IdolRoad.BoxBattleStatusClose","type":"hint-box","props":{"image":{"kind":"rect","x1":310,"y1":600,"x2":410,"y2":1200}}},
+ "status-title-area":{"name":"IdolRoad.BoxBattleStatusTitles","type":"hint-box","props":{"image":{"kind":"rect","x1":140,"y1":180,"x2":640,"y2":650}}},
+ "status-reference":{"name":"IdolRoad.BoxBattleStatusReference","type":"hint-box","props":{"image":{"kind":"rect","x1":145,"y1":390,"x2":201,"y2":419}}},
+ "status-title":{"name":"IdolRoad.BoxBattleStatusTitle","type":"hint-box","props":{"image":{"kind":"rect","x1":143,"y1":386,"x2":633,"y2":422}}},
+ "status-value":{"name":"IdolRoad.BoxBattleStatusValue","type":"hint-box","props":{"image":{"kind":"rect","x1":143,"y1":423,"x2":633,"y2":461}}},
+ "status-body":{"name":"IdolRoad.BoxBattleStatusBody","type":"hint-box","props":{"image":{"kind":"rect","x1":63,"y1":487,"x2":633,"y2":526}}},
+ "status-play-count":{"name":"IdolRoad.BoxBattleStatusPlayCount","type":"hint-box","props":{"image":{"kind":"rect","x1":143,"y1":607,"x2":197,"y2":645}}},
+ "status-play-turns":{"name":"IdolRoad.BoxBattleStatusPlayTurns","type":"hint-box","props":{"image":{"kind":"rect","x1":211,"y1":607,"x2":336,"y2":645}}},
+ "status-play-reference":{"name":"IdolRoad.BoxBattleStatusPlayReference","type":"hint-box","props":{"image":{"kind":"rect","x1":145,"y1":574,"x2":453,"y2":603}}},
+ "status-scroll-start":{"name":"IdolRoad.PointBattleStatusScrollStart","type":"hint-point","props":{"image":{"kind":"point","x":605,"y":630}}},
+ "status-scroll-end":{"name":"IdolRoad.PointBattleStatusScrollEnd","type":"hint-point","props":{"image":{"kind":"point","x":605,"y":450}}}
+}}

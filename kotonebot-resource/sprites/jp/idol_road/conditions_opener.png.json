@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+  "road-conditions-open":{"name":"IdolRoad.ConditionsInfoIcon","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":166,"y1":76,"x2":194,"y2":105}}},
+  "road-conditions-open-box":{"name":"IdolRoad.BoxConditionsInfo","type":"hint-box","props":{"image":{"kind":"rect","x1":160,"y1":70,"x2":200,"y2":111}}}
+}}

@@ -17,6 +17,7 @@ from .schema import (
     CONFIG_VERSION_CODE,
 )
 from .shared import SharedConfig, SharedMiscConfig, ProfilesConfig
+from .idol_road import IdolRoadConfig
 from .const import (
     ConfigEnum,
     Priority,
@@ -42,6 +43,7 @@ __all__ = [
     "PresentsConfig",
     "AssignmentConfig",
     "ContestConfig",
+    "IdolRoadConfig",
     "ProduceConfig",
     "MissionRewardConfig",
     "ClubRewardConfig",

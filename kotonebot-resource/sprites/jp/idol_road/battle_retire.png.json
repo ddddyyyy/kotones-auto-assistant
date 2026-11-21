@@ -1,0 +1,8 @@
+{"version":3,"definitions":{
+ "retire-title":{"name":"IdolRoad.BattleRetireTitle","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":61,"y1":922,"x2":184,"y2":953}}},
+ "retire-purpose":{"name":"IdolRoad.BoxBattleRetirePurpose","type":"hint-box","props":{"image":{"kind":"rect","x1":57,"y1":1004,"x2":641,"y2":1036}}},
+ "retire-purpose-pattern":{"name":"IdolRoad.BattleRetirePurpose","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":57,"y1":1004,"x2":641,"y2":1036}}},
+ "retire-warning":{"name":"IdolRoad.BoxBattleRetireWarning","type":"hint-box","props":{"image":{"kind":"rect","x1":57,"y1":1041,"x2":651,"y2":1074}}},
+ "retire-warning-pattern":{"name":"IdolRoad.BattleRetireWarning","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":57,"y1":1041,"x2":651,"y2":1074}}},
+ "retire-ok":{"name":"IdolRoad.BattleRetireOk","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":387,"y1":1137,"x2":551,"y2":1179}}}
+}}

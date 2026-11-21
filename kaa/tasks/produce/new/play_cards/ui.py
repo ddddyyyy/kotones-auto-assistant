@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from functools import cached_property
+from inspect import signature
+from importlib import import_module
 import os
 import cv2
 import logging
@@ -336,6 +338,7 @@ def _locate_letters(img: MatLike) -> list[Rect]:
 
 def _read_card_title(
     img: MatLike, letter: Rect, next_letter: Rect | None,
+    *,single_line_titles: bool=False,
 ) -> tuple[str, float] | None:
     """Verify an exposed title on the current frame, independently of artwork."""
     if next_letter is not None and next_letter.center.x - letter.center.x < 200:
@@ -380,9 +383,28 @@ def _read_card_title(
     readings: list[tuple[str, float]] = []
     confident_titles: set[str] = set()
     try:
+        reader=jp()
+    except Exception:
+        logger.debug('Could not initialize card title reader.',exc_info=True)
+        return None
+    try:
+        direct=single_line_titles and 'only_rec' in signature(reader.ocr).parameters
+    except (TypeError,ValueError):
+        direct=False
+    def read_title(pixels: MatLike):
+        if not direct:
+            return reader.ocr(pixels)
+        try:
+            return reader.ocr(pixels,only_rec=True)
+        except Exception as error:
+            missing=getattr(import_module('kotonebot.backend.ocr'),'OnlyRecEngineMissingError',None)
+            if missing is not None and isinstance(error,missing):
+                return reader.ocr(pixels)
+            raise
+    try:
         for scale in (1, 2, 3):
             enlarged = cv2.resize(crop, None, fx=scale, fy=scale)
-            results = jp().ocr(enlarged)
+            results = read_title(enlarged)
             confident_titles.update(
                 normalize_card_title(result.text) for result in results
                 if result.confidence >= 0.98
@@ -421,7 +443,7 @@ def _read_card_title(
         for threshold in (210, 220):
             mask = cv2.threshold(clean, threshold, 255, cv2.THRESH_BINARY)[1]
             for scale in (2, 3):
-                results = jp().ocr(cv2.resize(mask, None, fx=scale, fy=scale))
+                results = read_title(cv2.resize(mask, None, fx=scale, fy=scale))
                 confident_titles.update(
                     normalize_card_title(result.text) for result in results
                     if result.confidence >= 0.98
@@ -442,7 +464,7 @@ def _read_card_title(
     return corroborated[0][0], min(confidence for _, confidence in corroborated)
 
 
-def locate_cards(img: MatLike):
+def locate_cards(img: MatLike, *,single_line_titles: bool=False):
     typed_letters = _locate_typed_letters(img)
     letters = [letter for letter, _ in typed_letters]
     ordered_letters = sorted(letters, key=lambda item: item.center.x)
@@ -482,7 +504,7 @@ def locate_cards(img: MatLike):
         if result_list:
             # A same-category nearest image can still be the wrong card.
             # Exposed, corroborated title text must resolve uniquely in the DB.
-            title_reading = _read_card_title(img, letter, next_letter)
+            title_reading = _read_card_title(img, letter, next_letter,single_line_titles=single_line_titles)
             if title_reading is not None:
                 title_asset = asset_from_card_title(title_reading[0], category)
                 if title_asset is not None and title_asset != card_id:

@@ -1,0 +1,5 @@
+{"version":3,"definitions":{
+  "road-map-filled-star":{"name":"IdolRoad.MapFilledStar","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":359,"y1":775,"x2":410,"y2":826}}},
+  "road-map-filled-star2":{"name":"IdolRoad.MapFilledStar2","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":437,"y1":775,"x2":488,"y2":826}}},
+  "road-map-filled-star3":{"name":"IdolRoad.MapFilledStar3","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":515,"y1":775,"x2":566,"y2":826}}}
+}}

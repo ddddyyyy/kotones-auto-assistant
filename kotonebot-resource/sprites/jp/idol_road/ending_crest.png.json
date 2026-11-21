@@ -1,0 +1,1 @@
+{"version":3,"definitions":{"ending-crest":{"name":"IdolRoad.RankingEndingCrest","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":235,"y1":968,"x2":490,"y2":1040}}},"ending-crest-search":{"name":"IdolRoad.BoxRankingEndingCrestSearch","type":"hint-box","props":{"image":{"kind":"rect","x1":210,"y1":930,"x2":510,"y2":1070}}}}}

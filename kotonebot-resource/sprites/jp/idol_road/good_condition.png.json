@@ -1,0 +1,6 @@
+{"version":3,"definitions":{
+ "good-condition-icon":{"name":"IdolRoad.BattleGoodConditionIcon","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":18,"y1":359,"x2":58,"y2":402}}},
+ "good-condition-reference":{"name":"IdolRoad.BoxGoodConditionReference","type":"hint-box","props":{"image":{"kind":"rect","x1":18,"y1":359,"x2":58,"y2":402}}},
+ "good-condition-search":{"name":"IdolRoad.BoxGoodConditionSearch","type":"hint-box","props":{"image":{"kind":"rect","x1":14,"y1":237,"x2":75,"y2":730}}},
+ "good-condition-turns":{"name":"IdolRoad.BoxGoodConditionTurns","type":"hint-box","props":{"image":{"kind":"rect","x1":58,"y1":383,"x2":188,"y2":416}}}
+}}

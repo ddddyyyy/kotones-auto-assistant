@@ -1,0 +1,12 @@
+{"version":3,"definitions":{
+ "battle-log-close":{"name":"IdolRoad.BattleLogClose","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":342,"y1":1140,"x2":378,"y2":1178}}},
+ "battle-log-close-search":{"name":"IdolRoad.BoxBattleLogClose","type":"hint-box","props":{"image":{"kind":"rect","x1":320,"y1":1120,"x2":400,"y2":1200}}},
+ "battle-log-gutter":{"name":"IdolRoad.BoxBattleLogGutter","type":"hint-box","props":{"image":{"kind":"rect","x1":24,"y1":125,"x2":35,"y2":1110}}},
+ "battle-log-body":{"name":"IdolRoad.BoxBattleLogBody","type":"hint-box","props":{"image":{"kind":"rect","x1":40,"y1":115,"x2":678,"y2":1135}}},
+ "battle-log-any-hand-info":{"name":"IdolRoad.BoxLogAnyHandInfo","type":"hint-box","props":{"image":{"kind":"rect","x1":564,"y1":130,"x2":680,"y2":1120}}},
+ "battle-log-scroll-track":{"name":"IdolRoad.BoxBattleLogScrollTrack","type":"hint-box","props":{"image":{"kind":"rect","x1":684,"y1":128,"x2":687,"y2":1135}}},
+ "log-tail-clear-left":{"name":"IdolRoad.BoxLogTailClearLeft","type":"hint-box","props":{"image":{"kind":"rect","x1":45,"y1":1136,"x2":105,"y2":1148}}},
+ "log-tail-clear-right":{"name":"IdolRoad.BoxLogTailClearRight","type":"hint-box","props":{"image":{"kind":"rect","x1":600,"y1":1136,"x2":660,"y2":1148}}},
+ "log-scroll-from":{"name":"IdolRoad.PointLogScrollFrom","type":"hint-point","props":{"point":{"kind":"point","x":650,"y":1020}}},
+ "log-scroll-to":{"name":"IdolRoad.PointLogScrollTo","type":"hint-point","props":{"point":{"kind":"point","x":650,"y":320}}}
+}}

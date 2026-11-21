@@ -1,0 +1,1 @@
+{"version": 3, "definitions": {"sleep-cost-2": {"name": "IdolRoad.SleepCost2", "type": "prefab", "prefab_id": "TemplateMatchPrefab", "props": {"template": {"kind": "image", "x1": 300, "y1": 1060, "x2": 345, "y2": 1100}}}}}

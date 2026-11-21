@@ -1,0 +1,4 @@
+{"version":3,"definitions":{
+ "extra-play-search":{"name":"IdolRoad.BoxBattleExtraPlaySearch","type":"hint-box","props":{"image":{"kind":"rect","x1":14,"y1":744,"x2":94,"y2":828}}},
+ "extra-play-one":{"name":"IdolRoad.BattleExtraPlayOneControl","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":23,"y1":752,"x2":83,"y2":819}}}
+}}

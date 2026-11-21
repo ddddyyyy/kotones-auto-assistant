@@ -1,0 +1,5 @@
+{"version":3,"definitions":{
+ "selected-label":{"name":"IdolRoad.BattleSelectedLabel","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":102,"y1":1118,"x2":185,"y2":1141}}},
+ "selected-search":{"name":"IdolRoad.BoxBattleSelectionLabel","type":"hint-box","props":{"image":{"kind":"rect","x1":30,"y1":1098,"x2":680,"y2":1160}}},
+ "card-info-panel":{"name":"IdolRoad.BoxBattleCardInfoPanel","type":"hint-box","props":{"image":{"kind":"rect","x1":100,"y1":590,"x2":620,"y2":810}}}
+}}

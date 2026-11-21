@@ -1,0 +1,5 @@
+{"version":3,"definitions":{
+ "battle-log-entry":{"name":"IdolRoad.BattleLogEntry","type":"prefab","prefab_id":"TemplateMatchPrefab","props":{"template":{"kind":"image","x1":449,"y1":1179,"x2":479,"y2":1218}}},
+ "battle-log-entry-search":{"name":"IdolRoad.BoxBattleLogEntrySearch","type":"hint-box","props":{"image":{"kind":"rect","x1":430,"y1":1160,"x2":496,"y2":1244}}},
+ "battle-log-stable-hand":{"name":"IdolRoad.BoxLogStableHand","type":"hint-box","props":{"image":{"kind":"rect","x1":18,"y1":916,"x2":703,"y2":1130}}}
+}}

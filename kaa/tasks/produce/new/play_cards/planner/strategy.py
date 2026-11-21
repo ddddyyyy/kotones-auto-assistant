@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from kotonebot import logging
 from typing_extensions import override
 
 from kaa.kaa_context import produce_session
 from kaa.db.constants import ProduceExamEffectType, ProducePlanType
+from kaa.db.skill_card import load_exam_effects
 
 from ..strategy import AbstractBattleStrategy
 from .evaluator import (
@@ -28,6 +29,8 @@ from .simulator import can_afford_play, play_cost, simulate_play
 from .state import BattleState
 from .trigger import TriggerVerdict, evaluate_trigger_id
 from .visible_output import supports_current_preview, is_single_genki_conversion, current_preview_output
+from .selection_policy import SelectionPolicy,SelectionPolicyStop
+from .turn_observation import AbsoluteTurnObservation
 
 if TYPE_CHECKING:
     from kaa.db.skill_card import SkillCard
@@ -35,6 +38,38 @@ if TYPE_CHECKING:
     from ..ui import CardGameObject
 
 logger = logging.getLogger(__name__)
+
+
+def _visible_candidates_survive_redraw(card: SkillCard) -> bool:
+    """Exclude root/chain redraws; this is not a complete card-event simulator.
+
+    Conditional redraws remain a boundary even when their trigger is unknown.
+    Missing/cyclic or oversized chains cannot certify the old visible hand.
+    """
+    pending = [(segment.produce_exam_effect, 0, frozenset())
+               for segment in getattr(card, 'play_effects', ())]
+    visited = 0
+    while pending:
+        effect, depth, ancestors = pending.pop()
+        visited += 1
+        if effect is None or visited > 32 or depth > 8:
+            return False
+        if effect.effect_type == ProduceExamEffectType.ExamHandGraveCountCardDraw:
+            return False
+        ids = getattr(effect, 'chain_effect_ids', ())
+        if not ids:
+            continue
+        parent_id = getattr(effect, '_id', None)
+        path = ancestors | ({parent_id} if parent_id else set())
+        if any(not isinstance(ident, str) or not ident or ident in path for ident in ids):
+            return False
+        if visited + len(pending) + len(ids) > 32:
+            return False
+        children = load_exam_effects(set(ids))
+        if any(ident not in children for ident in ids):
+            return False
+        pending.extend((children[ident], depth + 1, path) for ident in ids)
+    return True
 
 
 class PlannerStrategy(AbstractBattleStrategy):
@@ -49,8 +84,18 @@ class PlannerStrategy(AbstractBattleStrategy):
         evaluator: CardEvaluator | None = None,
         *,
         is_exam: bool = False,
+        archetype: ProduceExamEffectType | None = None,
+        rank_at_most: int = 1,
+        selection_policy: SelectionPolicy | None = None,
+        end_turn: Callable[['LessonBattleContext'], bool] | None = None,
     ) -> None:
+        if type(rank_at_most) is not int or not 1<=rank_at_most<=6:
+            raise ValueError('rank_at_most must be an integer from 1 to 6')
         self._evaluator = evaluator or CompositeEvaluator()
+        self._archetype_override = archetype
+        self._rank_at_most = rank_at_most
+        self._selection_policy = selection_policy
+        self._end_turn = end_turn
         self._memory = BattleMemory()
         self._is_exam = is_exam
         self._last_move_state: BattleState | None = None
@@ -93,6 +138,8 @@ class PlannerStrategy(AbstractBattleStrategy):
         if self._pending_play is not None:
             pending = self._pending_play
             feedback = evaluate_play_feedback(pending, state)
+            if self._selection_policy is not None:
+                self._selection_policy.feedback(pending, feedback, state)
             if self._decision_trace is not None:
                 self._decision_trace.feedback(feedback, state)
             if self._play_evidence is not None:
@@ -167,11 +214,42 @@ class PlannerStrategy(AbstractBattleStrategy):
                 )
             logger.info('Planner found no cards with sufficient observed resources; falling back.')
             return False
-        candidates = self._prefer_motivation_setup(candidates, state)
-        candidates = self._protect_lesson_scoring_budget(candidates, state)
-        candidates = self._protect_exam_finish(candidates, state)
-        candidates = self._prefer_exam_catch_up_output(candidates, state)
-        candidates = self._prefer_lesson_finish_progress(candidates, state)
+        constrained = False
+        if self._selection_policy is not None:
+            policy_cards = tuple(card.card for card, _ in candidates if card.card is not None)
+            constraint = self._selection_policy.select(state, policy_cards)
+            if constraint.reason:
+                logger.info('Planner task selection constraint: %s', constraint.reason)
+            if constraint.stop:
+                if self._decision_trace is not None:
+                    self._decision_trace.screening(observed_hands,state,evaluated_candidates,[],[],'task_policy_stop:'+constraint.reason)
+                raise SelectionPolicyStop(constraint.reason or 'Task selection policy stopped input')
+            allowed=constraint.allowed_indices
+            if allowed is not None:
+                if (not allowed or any(type(index) is not int or not 0<=index<len(candidates) for index in allowed)
+                    or any(index not in allowed for index in constraint.preferred_indices)):
+                    raise SelectionPolicyStop('Task selection policy has no valid safe candidate: '+constraint.reason)
+            if constraint.end_turn:
+                if self._end_turn is None or not self._end_turn(ctx):
+                    raise ValueError('场地末手目标要求结束回合，但当前结束按钮未确认')
+                return True
+            if constraint.preferred_indices:
+                if any(type(index) is not int or not 0 <= index < len(candidates)
+                       for index in constraint.preferred_indices):
+                    raise SelectionPolicyStop('Task selection policy returned an invalid candidate index')
+                candidates = [(candidates[index][0], replace(candidates[index][1], reason=(
+                    candidates[index][1].reason+'; '+constraint.reason)))
+                    for index in dict.fromkeys(constraint.preferred_indices)]
+                constrained = True
+            elif allowed is not None:
+                candidates=[(candidates[index][0],replace(candidates[index][1],reason=(
+                    candidates[index][1].reason+'; '+constraint.reason))) for index in dict.fromkeys(allowed)]
+        if not constrained:
+            candidates = self._prefer_motivation_setup(candidates, state)
+            candidates = self._protect_lesson_scoring_budget(candidates, state)
+            candidates = self._protect_exam_finish(candidates, state)
+            candidates = self._prefer_exam_catch_up_output(candidates, state)
+            candidates = self._prefer_lesson_finish_progress(candidates, state)
         logger.debug(
             'Planner candidates (hp=%s, genki=%s, plays=%s, gap=%s): %s',
             state.hp if state.hp_known else 'unknown',
@@ -246,6 +324,8 @@ class PlannerStrategy(AbstractBattleStrategy):
                 terminal=state.remaining_turns_known and state.remaining_turns <= 1,
             )
         ctx.commit(best_card)
+        if self._selection_policy is not None and best_card.card is not None:
+            self._selection_policy.committed(state, best_card.card)
         if self._play_evidence is not None:
             self._play_evidence.after_commit()
         if best_card.card is not None:
@@ -809,6 +889,9 @@ class PlannerStrategy(AbstractBattleStrategy):
         for first_card, first in candidates:
             if first_card.card is None:
                 continue
+            if not _visible_candidates_survive_redraw(first_card.card):
+                ranked.append((first_card, first))
+                continue
             future = simulate_play(state, first_card.card)
             safe_output = conservative_target_output(first.confirmed_output)
             if state.score_gap is not None and safe_output > 0:
@@ -888,8 +971,21 @@ class PlannerStrategy(AbstractBattleStrategy):
             getattr(ctx, 'fetch_exam_remaining_turns', ctx.fetch_remaining_turns)
             if self._is_exam else ctx.fetch_remaining_turns
         )
-        observed_turns = fetch_turns()
-        remaining_turns = self._memory.reconcile_remaining_turns(observed_turns)
+        fetch_absolute_turn=getattr(ctx,'fetch_absolute_turn_observation',None)
+        absolute_turn=fetch_absolute_turn() if fetch_absolute_turn is not None else None
+        if absolute_turn is not None:
+            if not isinstance(absolute_turn,AbsoluteTurnObservation):
+                raise ValueError('Planner received an unsupported absolute turn observation')
+            absolute_turn.validate()
+            # The adapter supplies the remaining number from the same bound
+            # frame. Generic OCR debounce must not reject a real added turn.
+            observed_turns=absolute_turn.remaining_turns
+            remaining_turns=observed_turns
+        else:
+            if self._memory.absolute_turn_observation is not None:
+                raise ValueError('Planner lost its confirmed absolute turn; no remaining-turn fallback')
+            observed_turns = fetch_turns()
+            remaining_turns = self._memory.reconcile_remaining_turns(observed_turns)
         turns_known = (
             observed_turns is not None
             and 1 <= observed_turns <= 30
@@ -906,9 +1002,15 @@ class PlannerStrategy(AbstractBattleStrategy):
             self._memory.previous_remaining_turns = None
             if turns_known:
                 self._memory.turn_baseline_known = True
-        self._memory.observe(remaining_turns, cards)
-        session = produce_session()
-        archetype = session.archetype if session is not None else None
+        if absolute_turn is not None:
+            self._memory.observe(remaining_turns,cards,absolute_turn=absolute_turn)
+        else:
+            self._memory.observe(remaining_turns, cards)
+        if self._archetype_override is not None:
+            archetype = self._archetype_override
+        else:
+            session = produce_session()
+            archetype = session.archetype if session is not None else None
         profile = profile_for(archetype)
         fetch_score_gap = None if self._is_exam else getattr(ctx, 'fetch_score_gap', None)
         score_gap = fetch_score_gap() if fetch_score_gap is not None else None
@@ -921,9 +1023,15 @@ class PlannerStrategy(AbstractBattleStrategy):
         fetch_standings = None if not self._is_exam else getattr(ctx, 'fetch_exam_standings', None)
         standings = fetch_standings() if fetch_standings is not None else None
         current_score = standings.own_score if standings is not None else None
+        # Mode adapters may supply an independently verified own score even
+        # when the leader is unreadable. Explicit unknown never uses legacy zero.
+        fetch_current_score=getattr(ctx,'fetch_exam_current_score',None) if self._is_exam else None
+        if fetch_current_score is not None:
+            own_score=fetch_current_score()
+            current_score=own_score if type(own_score) is int and own_score>=0 else None
         target_score = (
             standings.leader_score + 1
-            if standings is not None and not standings.own_is_leader
+            if self._rank_at_most==1 and standings is not None and not standings.own_is_leader
             else None
         )
         if standings is not None:
@@ -946,7 +1054,12 @@ class PlannerStrategy(AbstractBattleStrategy):
             for item in (observations or [])
         }
         if observations is not None:
-            self._memory.reconcile_effect_values(observed_values)
+            fetch_unknown = getattr(ctx, 'fetch_unknown_effects', None)
+            unknown_effects = fetch_unknown() if fetch_unknown is not None else frozenset()
+            if unknown_effects:
+                self._memory.reconcile_effect_values(observed_values, unknown_effects=unknown_effects)
+            else:
+                self._memory.reconcile_effect_values(observed_values)
         if observations:
             logger.debug(
                 'Planner observed HUD effects: %s',
@@ -971,18 +1084,24 @@ class PlannerStrategy(AbstractBattleStrategy):
         hp = observed_hp
         observed_genki = fetch_genki()
         genki = observed_genki
+        fetch_max_hp=getattr(ctx,'fetch_exam_max_hp',None) if self._is_exam else None
+        maximum=fetch_max_hp() if fetch_max_hp is not None else None
+        maximum=maximum if type(maximum) is int and maximum>0 and hp is not None and 0<=hp<=maximum else None
         return BattleState(
             remaining_turns=remaining_turns if turns_known else 1,
             remaining_turns_known=turns_known,
             observed_remaining_turns=observed_turns,
+            absolute_turn_observation=absolute_turn,
             observed_hp=observed_hp,
             observed_genki=observed_genki,
             observed_effect_values=tuple(sorted(observed_values.items())),
             hp=hp if hp is not None else 0,
             genki=genki if genki is not None else 0,
             hp_known=hp is not None,
+            max_hp=maximum,
             genki_known=genki is not None,
             current_score=current_score,
+            rank_at_most=self._rank_at_most if self._is_exam else None,
             target_score=target_score,
             score_gap=score_gap,
             score_target_is_final=score_target_is_final,

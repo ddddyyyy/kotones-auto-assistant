@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import math
 from typing import Protocol
@@ -19,6 +19,7 @@ from kaa.db.skill_card import ProduceExamEffect, SkillCard
 from .state import BattleState
 from .visible_output import current_preview_output, is_single_genki_conversion
 from .profiles import profile_for
+from .sense_output import estimate_sense_output
 from .costs import play_cost, projected_growth_output
 from .simulator import estimate_genki_gain, simulate_play, simulate_play_prefix
 from .trigger import TriggerVerdict, evaluate_trigger_id, load_exam_trigger
@@ -337,6 +338,15 @@ class EffectHeuristicEvaluator:
 
             if kind in self._DIRECT:
                 output = (value + effect_state.anomaly.enthusiasm) * count * output_multiplier
+                if kind == ProduceExamEffectType.ExamLesson:
+                    sense = estimate_sense_output(value, count, effect_state, output_multiplier)
+                    if sense is not None:
+                        output = sense.output
+                        # 已观测取整关系不证明未建模的道具触发、费用修饰或实际收益。
+                        output_inputs_known = False
+                        reasons.append('集中计入普通产分估算')
+                        if sense.observed_rounding_scope:
+                            reasons.append('单段好调考试取整')
                 if kind == ProduceExamEffectType.ExamLesson and preview_output is not None:
                     output = float(preview_output)
                     output_inputs_known = False
@@ -435,12 +445,15 @@ class EffectHeuristicEvaluator:
             elif kind == ProduceExamEffectType.ExamReview:
                 score += value * min(turns, 5) * setup_multiplier(kind)
                 reasons.append('好印象')
+            elif kind == ProduceExamEffectType.ExamParameterBuffMultiplePerTurn:
+                prefix=simulate_play_prefix(state,card,effect_index)
+                score+=self._great_condition_setup_value(prefix,duration,has_followup_play())
+                reasons.append('绝好调随好调层数增益，后续产分机会估计')
             elif kind in {
                 ProduceExamEffectType.ExamReviewAdditive,
                 ProduceExamEffectType.ExamReviewMultiple,
                 ProduceExamEffectType.ExamReviewValueMultiple,
                 ProduceExamEffectType.ExamLessonAddMultipleLessonBuff,
-                ProduceExamEffectType.ExamParameterBuffMultiplePerTurn,
                 ProduceExamEffectType.ExamFullPowerPointAdditive,
                 ProduceExamEffectType.ExamFullPowerLessonMultipleAdditive,
             }:
@@ -453,6 +466,10 @@ class EffectHeuristicEvaluator:
                     + effect_state.buffs.lesson_buff * value2 / 1000.0
                     + effect_state.anomaly.enthusiasm
                 ) * count * output_multiplier
+                if preview_output is not None:
+                    output=float(preview_output)
+                    output_inputs_known=False
+                    reasons.append('同帧牌面单击预览下界，实际总收益未确认')
                 projected_output += output
                 score += self._score_output(output, state) * late_weight
                 reasons.append('集中依赖参数')
@@ -699,6 +716,9 @@ class EffectHeuristicEvaluator:
             elif projected_output > output_before_effect:
                 reasons.append('产分依赖数值未确认')
 
+        if card._id in state.native_payment_conflict_card_ids:
+            confirmed_output=0.0
+            reasons.append('原生可用与费用模型冲突，当前费用和后态未确认')
         if cross_plan:
             reasons.append('活动跨流派牌')
         if (
@@ -810,9 +830,11 @@ class EffectHeuristicEvaluator:
                 0, min(state.buffs.review, state.buffs.aggressive),
             ))
         if state.buffs.parameter_buff_turns > 0:
-            multiplier *= 1.5
-        if state.buffs.parameter_buff_multiple_turns > 0:
-            multiplier *= 1.1
+            # User-confirmed game rule: great condition strengthens good
+            # condition by 0.1 per remaining good-condition turn. It has no
+            # multiplier of its own when good condition is absent.
+            multiplier *= 1.5 + (0.1 * state.buffs.parameter_buff_turns
+                if state.buffs.parameter_buff_multiple_turns > 0 else 0.0)
         stance = 'normal' if state.anomaly.full_power_active else state.anomaly.stance.value
         if stance == 'aggressive':
             multiplier *= 2.0
@@ -826,6 +848,30 @@ class EffectHeuristicEvaluator:
             multiplier *= 3.0
 
         return multiplier
+
+    @classmethod
+    def _great_condition_setup_value(cls,state: BattleState,duration: int,has_followup: bool) -> float:
+        good=state.buffs.parameter_buff_turns;great=state.buffs.parameter_buff_multiple_turns
+        values=dict(state.effect_values_for_planning)
+        concentration=state.buffs.lesson_buff
+        if (not state.remaining_turns_known or good<=0 or duration<=0 or concentration<=0
+            or values.get('parameter_buff')!=good or values.get('lesson_buff')!=concentration
+            or ('parameter_buff_multiple' in state.observed_effects and values.get('parameter_buff_multiple')!=great)):
+            return 0.0
+        # Option value only: half of the bounded opportunities are estimated
+        # to yield a scoring play. No future hand, base damage or actual gain
+        # is invented. Existing great-condition turns are not counted twice.
+        value=0.0
+        for elapsed in range(0 if has_followup else 1,min(6,state.remaining_turns,good,great+duration)):
+            old=max(0,great-elapsed);new=great+duration-elapsed
+            if old>0 or new<=0:continue
+            before=replace(state,buffs=replace(state.buffs,parameter_buff_turns=good-elapsed,
+                parameter_buff_multiple_turns=old),observed_card_output=None,
+                observed_card_output_is_lower_bound=False)
+            after=replace(before,buffs=replace(before.buffs,parameter_buff_multiple_turns=new))
+            delta=max(0.,cls._output_multiplier(after)-cls._output_multiplier(before))
+            value+=cls._score_output(concentration*delta,state)*.5
+        return value
 
     @classmethod
     def _official_effect_prior(
